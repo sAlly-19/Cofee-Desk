@@ -1,0 +1,16 @@
+node_modules/
+dist-electron/
+signaling-server/dist/
+release/
+artifacts/
+.env
+.env.*
+!.env.example
+*.log
+*.pem
+*.key
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.codex/

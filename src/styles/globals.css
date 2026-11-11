@@ -1,0 +1,162 @@
+/* Estilos globais do Coffee-Desk — Dark Espresso & Copper */
+@import "./theme.css";
+@import "./fonts.css";
+@import "./dashboard.css";
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-interface);
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  height: 100%;
+  width: 100%;
+  display: flex;
+}
+
+/* Utilitários de Tipografia */
+.font-editorial {
+  font-family: var(--font-editorial);
+}
+
+.font-interface {
+  font-family: var(--font-interface);
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(199, 123, 59, 0.2);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(199, 123, 59, 0.4);
+}
+
+/* Utilitários de Arraste da Janela Frameless */
+.app-drag-region {
+  -webkit-app-region: drag;
+}
+
+.app-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  outline: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+input {
+  font-family: inherit;
+  font-size: inherit;
+  outline: none;
+}
+
+/* Animações sutis e elegantes */
+@keyframes cd-pulse-green {
+  0%,
+  100% {
+    opacity: 0.9;
+    box-shadow: 0 0 6px rgba(52, 198, 107, 0.4);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 12px rgba(52, 198, 107, 0.7);
+  }
+}
+
+button,
+input,
+select,
+textarea {
+  transition:
+    background-color var(--duration-interaction),
+    border-color var(--duration-interaction),
+    color var(--duration-interaction),
+    box-shadow var(--duration-interaction);
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 4px;
+}
+button:active:enabled {
+  filter: brightness(0.94);
+}
+input,
+textarea {
+  user-select: text;
+}
+.cd-spin {
+  animation: cd-spin 1s linear infinite;
+}
+@keyframes cd-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes cd-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes cd-zoom-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "name": "coffee-desk",
+  "productName": "Coffee-Desk",
+  "version": "1.0.0",
+  "description": "Coffee Desk — acesso remoto P2P para Windows",
+  "author": "Café - Sistemas & Softwares",
+  "license": "MIT",
+  "main": "dist-electron/main/index.js",
+  "scripts": {
+    "dev": "vite",
+    "build:electron": "node --max-old-space-size=4096 ./node_modules/typescript/lib/tsc.js -p tsconfig.electron.json && node -e \"const fs=require('fs'); if (!fs.existsSync('dist-electron/main/native')) fs.mkdirSync('dist-electron/main/native', {recursive:true}); if (fs.existsSync('src/main/native/CoffeeInput.exe')) fs.copyFileSync('src/main/native/CoffeeInput.exe', 'dist-electron/main/native/CoffeeInput.exe');\" && node scripts/bundle-preload.js",
+    "build": "vite build && npm run build:electron",
+    "package": "npm run build && electron-builder",
+    "preview": "vite preview",
+    "electron": "node scripts/start-electron.js",
+    "electron:dev": "npm run build:electron && concurrently \"vite\" \"wait-on http://localhost:5173 && node scripts/start-electron.js\"",
+    "signaling": "cd signaling-server && npm run dev",
+    "lint": "eslint src --ext .ts,.tsx",
+    "format": "prettier --write src",
+    "typecheck": "tsc --noEmit",
+    "screenshot": "node scripts/capture-screenshot.js",
+    "verify:redesign": "node scripts/capture-screenshot.js --verify",
+    "assets:icons": "node scripts/capture-screenshot.js --icons",
+    "verify:startup": "npm run build:electron && node scripts/verify-startup.js",
+    "package:win": "npm run build && electron-builder --win nsis --x64 --publish never",
+    "release:source": "node scripts/prepare-source.js",
+    "verify:package": "node scripts/verify-package.js",
+    "release:checksums": "node scripts/release-checksums.js"
+  },
+  "dependencies": {
+    "electron-squirrel-startup": "^1.0.1",
+    "electron-store": "^8.2.0",
+    "lucide-react": "^1.71.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^8.2.2",
+    "electron": "^45.2.3",
+    "electron-builder": "^24.13.3",
+    "eslint": "^8.57.0",
+    "prettier": "^3.3.2",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.0",
+    "wait-on": "^7.2.0",
+    "esbuild": "^0.21.5",
+    "7zip-bin": "5.2.0"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  }
+}

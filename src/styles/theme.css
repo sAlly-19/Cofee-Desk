@@ -1,0 +1,81 @@
+/* Coffee Desk Design System — Dark Espresso & Refined Copper */
+:root {
+  /* Cores de Fundo e Superfícies Espresso */
+  --bg-primary: #140c0a;
+  --bg-sidebar: #160e0b;
+  --bg-surface: #21130f;
+  --bg-surface-raised: #2c1912;
+  --bg-input: #1c110e;
+
+  /* Bordas e Divisores Quentes */
+  --border-subtle: #39241c;
+  --border-warm: #70432b;
+  --border-focus: #c77b3b;
+
+  /* Acentos de Cobre e Caramelo */
+  --accent-primary: #c77b3b;
+  --accent-hover: #df9651;
+  --accent-active: #b36427;
+  --accent-soft: #e5a96d;
+  --accent-subtle: rgba(199, 123, 59, 0.12);
+  --accent-gradient: linear-gradient(135deg, #c77b3b 0%, #a85d26 100%);
+  --accent-gradient-hover: linear-gradient(135deg, #df9651 0%, #c77b3b 100%);
+
+  /* Textos de Alto Contraste e Leitura Editorial */
+  --text-primary: #f4eae0;
+  --text-secondary: #c4afa0;
+  --text-muted: #927c70;
+  --text-dim: #6b584e;
+
+  /* Status e Disponibilidade */
+  --success: #34c66b;
+  --success-bg: rgba(52, 198, 107, 0.12);
+  --success-border: rgba(52, 198, 107, 0.3);
+  --warning: #eab308;
+  --error: #ef4444;
+
+  /* Tipografia */
+  --font-editorial: "Fraunces", "Playfair Display", Georgia, serif;
+  --font-interface:
+    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Consolas, monospace;
+
+  /* Raios de Arredondamento */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --radius-full: 9999px;
+
+  /* Sombras e Profundidade Suaves */
+  --shadow-card:
+    0 10px 30px -10px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--border-subtle);
+  --shadow-card-hover:
+    0 14px 35px -8px rgba(0, 0, 0, 0.75), 0 0 0 1px var(--border-warm);
+  --shadow-button: 0 4px 14px rgba(0, 0, 0, 0.22);
+
+  /* Transições Refinadas */
+  --transition-fast: 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-normal: 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Variáveis de Compatibilidade Legadas mapeadas para os Novos Tokens */
+  --cd-bg: var(--bg-primary);
+  --cd-bg-elevated: var(--bg-surface);
+  --cd-surface: var(--bg-surface);
+  --cd-surface-card: var(--bg-surface);
+  --cd-surface-alt: var(--bg-surface-raised);
+  --cd-surface-input: var(--bg-input);
+  --cd-border: var(--border-subtle);
+  --cd-text: var(--text-primary);
+  --cd-text-secondary: var(--text-secondary);
+  --cd-text-muted: var(--text-muted);
+  --cd-primary: var(--accent-primary);
+  --cd-primary-hover: var(--accent-hover);
+  --cd-primary-active: var(--accent-active);
+  --cd-primary-gradient: var(--accent-gradient);
+  --cd-primary-gradient-hover: var(--accent-gradient-hover);
+  --cd-success: var(--success);
+  --cd-error: var(--error);
+  --cd-radius: var(--radius-md);
+  --cd-shadow: var(--shadow-card);
+}

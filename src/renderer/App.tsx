@@ -1,0 +1,337 @@
+import { useState, useCallback, useRef, useEffect } from "react";
+import { ElectronAPI } from "@main/preload";
+import { useModal } from "./context/ModalContext";
+
+// Hooks
+import { useSignaling } from "./hooks/useSignaling";
+import { useRecentSessions } from "./hooks/useRecentSessions";
+import { useCallManager } from "./hooks/useCallManager";
+
+// Componentes do Dashboard & Sessão
+import { TitleBar } from "./components/dashboard/TitleBar";
+import { Sidebar } from "./components/dashboard/Sidebar";
+import { DashboardHome } from "./components/dashboard/DashboardHome";
+import { ActiveSessionContainer } from "./components/session/ActiveSessionContainer";
+
+// Modais
+import { IncomingCallModal } from "./components/modals/IncomingCallModal";
+import { SettingsModal } from "./components/modals/SettingsModal";
+import { HelpModal } from "./components/modals/HelpModal";
+import { AllRecentSessionsModal } from "./components/modals/AllRecentSessionsModal";
+import { SessionOptionsModal } from "./components/modals/SessionOptionsModal";
+
+// Tipos
+import type { NavItemKey, RecentSession } from "./types/app";
+
+declare global {
+  interface Window {
+    electronAPI: ElectronAPI;
+  }
+}
+
+export default function App(): JSX.Element {
+  const { showToast } = useModal();
+
+  // Navegação da sidebar e feedback
+  const [activeNav, setActiveNav] = useState<NavItemKey>("identity");
+  const [isCopied, setIsCopied] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    },
+    [],
+  );
+  const [focusPassword, setFocusPassword] = useState(false);
+
+  // Modais
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showHelpModal, setShowHelpModal] = useState(false);
+  const [showAllRecentModal, setShowAllRecentModal] = useState(false);
+  const [selectedSessionOptions, setSelectedSessionOptions] =
+    useState<RecentSession | null>(null);
+
+  // Referências para auto-scroll
+  const remoteSectionRef = useRef<HTMLDivElement>(null);
+  const recentSectionRef = useRef<HTMLDivElement>(null);
+
+  // 1. Histórico de Sessões Recentes
+  const {
+    recentSessions,
+    addRecentSession,
+    renameSession,
+    deleteSession,
+    handleClearAllRecents,
+    resetRecentsToDefault,
+  } = useRecentSessions();
+
+  // Forward ref para conectar o handler de mensagens com useCallManager
+  const callSignalingHandlerRef = useRef<((msg: any) => void) | null>(null);
+
+  // 2. Conexão WebSocket / Sinalização
+  const {
+    serverStatus,
+    isRegistered,
+    myId,
+    sendWsMessage,
+    handleResetIdentity,
+  } = useSignaling({
+    onSignalingMessage: (msg) => {
+      callSignalingHandlerRef.current?.(msg);
+    },
+  });
+
+  const availabilityStatus =
+    serverStatus === "connected" && !isRegistered ? "connecting" : serverStatus;
+
+  // 3. Gerenciamento de Chamadas (P2P Call Lifecycle)
+  const {
+    view,
+    sessionRole,
+    connectionStatus,
+    remoteId,
+    setRemoteId,
+    connectionId,
+    connectionError,
+    incomingCall,
+    countdown,
+    unattendedEnabled,
+    setUnattendedEnabled,
+    unattendedPassword,
+    setUnattendedPassword,
+    handleConnectWithId,
+    handleConnect,
+    handleCancelCall,
+    acceptIncomingCall,
+    rejectIncomingCall,
+    requestDisconnect,
+    handleCallSignalingMessage,
+    resetUnattendedSettings,
+  } = useCallManager({
+    myId,
+    serverStatus: availabilityStatus,
+    sendWsMessage,
+    onCallEstablished: addRecentSession,
+  });
+
+  // Atualiza a referência de sinalização do gerenciador de chamadas
+  callSignalingHandlerRef.current = handleCallSignalingMessage;
+
+  // Copiar ID do usuário
+  const handleCopyId = useCallback(async () => {
+    if (!myId) return;
+    try {
+      await navigator.clipboard.writeText(myId);
+      setIsCopied(true);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setIsCopied(false), 2000);
+    } catch {
+      setIsCopied(false);
+      showToast({
+        type: "error",
+        message: "Não foi possível copiar o ID. Tente novamente.",
+      });
+    }
+  }, [myId, showToast]);
+
+  // Mensagens WebRTC para o par conectado
+  const handleSendSignalingMessage = useCallback(
+    (type: "offer" | "answer" | "ice-candidate", payload: unknown) => {
+      sendWsMessage({
+        type,
+        targetId: remoteId,
+        fromId: myId,
+        payload,
+        timestamp: new Date().toISOString(),
+      });
+    },
+    [remoteId, myId, sendWsMessage],
+  );
+
+  // Tratar eventos remotos de input (mouse/teclado)
+  const handleRemoteInput = useCallback((input: any) => {
+    if (input.type === "mouse" && window.electronAPI) {
+      window.electronAPI.sendMouseEvent(input.data);
+    } else if (input.type === "keyboard" && window.electronAPI) {
+      window.electronAPI.sendKeyEvent(input.data);
+    }
+  }, []);
+
+  // Navegação da sidebar
+  const handleNavClick = (nav: NavItemKey) => {
+    setActiveNav(nav);
+    if (nav === "identity") {
+      remoteSectionRef.current
+        ?.closest("main")
+        ?.scrollTo({
+          top: 0,
+          behavior: window.matchMedia("(prefers-reduced-motion: reduce)")
+            .matches
+            ? "auto"
+            : "smooth",
+        });
+    } else if (nav === "remote") {
+      remoteSectionRef.current?.scrollIntoView({
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
+        block: "center",
+      });
+    } else if (nav === "recent") {
+      recentSectionRef.current?.scrollIntoView({
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
+        block: "center",
+      });
+    } else if (nav === "settings") {
+      setFocusPassword(false);
+      setShowSettingsModal(true);
+    } else if (nav === "help") {
+      setShowHelpModal(true);
+    }
+  };
+
+  // Redefinir identidade completa (dados locais + WebSocket)
+  const onFullResetIdentity = useCallback(() => {
+    handleResetIdentity(() => {
+      resetRecentsToDefault();
+      resetUnattendedSettings();
+      setShowSettingsModal(false);
+    });
+  }, [handleResetIdentity, resetRecentsToDefault, resetUnattendedSettings]);
+
+  // Limpeza de todas as sessões recentes com fechamento de modal
+  const onClearAllRecents = useCallback(async () => {
+    const cleared = await handleClearAllRecents();
+    if (cleared) {
+      setShowAllRecentModal(false);
+    }
+  }, [handleClearAllRecents]);
+
+  // Controles de Janela Frameless
+  const handleMinimize = useCallback(() => {
+    window.electronAPI?.minimize();
+  }, []);
+
+  const handleMaximize = useCallback(() => {
+    window.electronAPI?.maximize();
+  }, []);
+
+  const handleClose = useCallback(() => {
+    window.electronAPI?.close();
+  }, []);
+
+  return (
+    <div className="app-shell">
+      {/* 1. BARRA DE TÍTULO CUSTOMIZADA (DRAGGABLE + STATUS + BOTÕES DE JANELA) */}
+      <TitleBar
+        serverStatus={availabilityStatus}
+        onMinimize={handleMinimize}
+        onMaximize={handleMaximize}
+        onClose={handleClose}
+      />
+
+      {/* 2. ÁREA DE CONTEÚDO PRINCIPAL (SIDEBAR + CONTEÚDO) */}
+      <>
+        {/* SIDEBAR COM NAVEGAÇÃO E STATUS P2P */}
+        <Sidebar
+          sessionActive={view === "session"}
+          activeNav={activeNav}
+          onNavClick={handleNavClick}
+          serverStatus={availabilityStatus}
+          myId={myId}
+        />
+
+        {/* CONTAINER DO DASHBOARD OU SESSÃO REMOTA */}
+        <main className={view === "home" ? "app-main is-home" : "app-main"}>
+          {view === "home" ? (
+            <DashboardHome
+              remoteSectionRef={remoteSectionRef}
+              recentSectionRef={recentSectionRef}
+              remoteId={remoteId}
+              setRemoteId={setRemoteId}
+              connectionStatus={connectionStatus}
+              serverStatus={availabilityStatus}
+              connectionError={connectionError}
+              onConnect={handleConnect}
+              onCancelCall={handleCancelCall}
+              myId={myId}
+              isCopied={isCopied}
+              onCopyId={handleCopyId}
+              onOpenSettings={() => {
+                setFocusPassword(true);
+                setShowSettingsModal(true);
+              }}
+              recentSessions={recentSessions}
+              onConnectSession={handleConnectWithId}
+              onOpenOptions={setSelectedSessionOptions}
+              onViewAll={() => setShowAllRecentModal(true)}
+            />
+          ) : (
+            /* SESSÃO REMOTA ATIVA P2P - OCUPA 100% DO VIEWPORT */
+            <div className="session-stage">
+              <ActiveSessionContainer
+                connectionId={connectionId ?? ""}
+                remoteId={remoteId ?? ""}
+                role={sessionRole}
+                onRemoteInput={handleRemoteInput}
+                onSendSignalingMessage={handleSendSignalingMessage}
+                onRequestDisconnect={requestDisconnect}
+              />
+            </div>
+          )}
+        </main>
+      </>
+
+      {/* 3. MODAIS */}
+      <IncomingCallModal
+        incomingCall={incomingCall}
+        countdown={countdown}
+        onAccept={acceptIncomingCall}
+        onReject={rejectIncomingCall}
+      />
+
+      <SettingsModal
+        focusPassword={focusPassword}
+        isOpen={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        unattendedEnabled={unattendedEnabled}
+        setUnattendedEnabled={setUnattendedEnabled}
+        unattendedPassword={unattendedPassword}
+        setUnattendedPassword={setUnattendedPassword}
+        onResetIdentity={onFullResetIdentity}
+        onSave={() => {
+          setShowSettingsModal(false);
+          showToast({
+            type: "success",
+            message: "Configurações salvas com sucesso!",
+          });
+        }}
+      />
+
+      <HelpModal
+        isOpen={showHelpModal}
+        onClose={() => setShowHelpModal(false)}
+      />
+
+      <AllRecentSessionsModal
+        isOpen={showAllRecentModal}
+        onClose={() => setShowAllRecentModal(false)}
+        recentSessions={recentSessions}
+        onClearAll={onClearAllRecents}
+        onConnectSession={handleConnectWithId}
+        onOpenOptions={setSelectedSessionOptions}
+      />
+
+      <SessionOptionsModal
+        selectedSession={selectedSessionOptions}
+        onClose={() => setSelectedSessionOptions(null)}
+        onConnectDirect={handleConnectWithId}
+        onConnectWithPassword={handleConnectWithId}
+        onRename={renameSession}
+        onDelete={deleteSession}
+      />
+    </div>
+  );
+}

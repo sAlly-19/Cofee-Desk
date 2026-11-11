@@ -1,0 +1,46 @@
+{
+  "appId": "com.coffeedesk.app",
+  "productName": "Coffee-Desk",
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "dist-electron/main/**/*",
+    "dist-electron/shared/**/*",
+    "dist-electron/preload/**/*",
+    "dist-electron/renderer/**/*",
+    "!dist-electron/main/native/**/*"
+  ],
+  "extraMetadata": {
+    "main": "dist-electron/main/index.js"
+  },
+  "win": {
+    "icon": "assets/icon.ico",
+    "target": "nsis"
+  },
+  "mac": {
+    "target": "dmg"
+  },
+  "linux": {
+    "icon": "assets/icon.png",
+    "target": "AppImage"
+  },
+  "copyright": "Copyright © 2026 Café - Sistemas & Softwares",
+  "artifactName": "Coffee-Desk-${version}-${arch}-Setup.${ext}",
+  "extraResources": [
+    {
+      "from": "dist-electron/main/native",
+      "to": "native",
+      "filter": [
+        "CoffeeInput.exe"
+      ]
+    }
+  ],
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "Coffee Desk"
+  }
+}
