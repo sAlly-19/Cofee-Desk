@@ -14,3 +14,7 @@ Thumbs.db
 .vscode/
 .idea/
 .codex/
+
+signaling-server/admin-dist/
+
+!.env.production.example

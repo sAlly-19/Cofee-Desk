@@ -1,3 +1,4 @@
+import { ReportDeviceModal } from "./components/modals/ReportDeviceModal";
 import { useState, useCallback, useRef, useEffect } from "react";
 import { ElectronAPI } from "@main/preload";
 import { useModal } from "./context/ModalContext";
@@ -42,6 +43,7 @@ export default function App(): JSX.Element {
     },
     [],
   );
+  const [reportTarget, setReportTarget] = useState<string | null>(null);
   const [focusPassword, setFocusPassword] = useState(false);
 
   // Modais
@@ -71,6 +73,8 @@ export default function App(): JSX.Element {
   // 2. Conexão WebSocket / Sinalização
   const {
     serverStatus,
+    serverError,
+    reportDevice,
     isRegistered,
     myId,
     sendWsMessage,
@@ -115,7 +119,14 @@ export default function App(): JSX.Element {
   });
 
   // Atualiza a referência de sinalização do gerenciador de chamadas
-  callSignalingHandlerRef.current = handleCallSignalingMessage;
+  callSignalingHandlerRef.current = (msg) => {
+    if (
+      msg.type === "report-received" ||
+      (reportTarget && msg.type === "error")
+    )
+      return;
+    void handleCallSignalingMessage(msg);
+  };
 
   // Copiar ID do usuário
   const handleCopyId = useCallback(async () => {
@@ -161,15 +172,12 @@ export default function App(): JSX.Element {
   const handleNavClick = (nav: NavItemKey) => {
     setActiveNav(nav);
     if (nav === "identity") {
-      remoteSectionRef.current
-        ?.closest("main")
-        ?.scrollTo({
-          top: 0,
-          behavior: window.matchMedia("(prefers-reduced-motion: reduce)")
-            .matches
-            ? "auto"
-            : "smooth",
-        });
+      remoteSectionRef.current?.closest("main")?.scrollTo({
+        top: 0,
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
+      });
     } else if (nav === "remote") {
       remoteSectionRef.current?.scrollIntoView({
         behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -245,6 +253,11 @@ export default function App(): JSX.Element {
 
         {/* CONTAINER DO DASHBOARD OU SESSÃO REMOTA */}
         <main className={view === "home" ? "app-main is-home" : "app-main"}>
+          {serverError && (
+            <div role="alert" className="server-alert">
+              <span>{serverError}</span><button className="text-button" onClick={()=>window.dispatchEvent(new Event('server-changed'))}>Reconectar</button>
+            </div>
+          )}
           {view === "home" ? (
             <DashboardHome
               remoteSectionRef={remoteSectionRef}
@@ -277,6 +290,7 @@ export default function App(): JSX.Element {
                 role={sessionRole}
                 onRemoteInput={handleRemoteInput}
                 onSendSignalingMessage={handleSendSignalingMessage}
+                onReport={() => setReportTarget(remoteId)}
                 onRequestDisconnect={requestDisconnect}
               />
             </div>
@@ -324,12 +338,18 @@ export default function App(): JSX.Element {
         onOpenOptions={setSelectedSessionOptions}
       />
 
+      <ReportDeviceModal
+        targetId={reportTarget}
+        onClose={() => setReportTarget(null)}
+        onSend={reportDevice}
+      />
       <SessionOptionsModal
         selectedSession={selectedSessionOptions}
         onClose={() => setSelectedSessionOptions(null)}
         onConnectDirect={handleConnectWithId}
         onConnectWithPassword={handleConnectWithId}
         onRename={renameSession}
+        onReport={setReportTarget}
         onDelete={deleteSession}
       />
     </div>

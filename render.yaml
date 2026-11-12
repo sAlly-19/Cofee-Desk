@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: coffee-desk
+    runtime: node
+    plan: free
+    region: virginia
+    numInstances: 1
+    autoDeployTrigger: off
+    buildCommand: npm run build:hosting
+    startCommand: npm start --prefix signaling-server
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: PROXY_PROVIDER
+        value: render
+      - key: TRUST_PROXY
+        value: "true"
+      - key: ALLOWED_ORIGINS
+        value: file://,null
+      - key: DATABASE_URL
+        sync: false
+      - key: ADMIN_ENCRYPTION_KEY
+        sync: false

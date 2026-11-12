@@ -1,4 +1,14 @@
-# Coffee Desk 1.0.0
+# Coffee Desk 1.0.1
+
+Implantação na Render + Neon: consulte [o guia de implantação](docs/DEPLOY-RENDER-NEON.md). Não é necessário gerar instalador para publicar o servidor e o painel.
+
+A versão 1.0.1 usa identidades Ed25519, PostgreSQL e painel administrativo com senha e TOTP. O protocolo protegido exige o cliente novo; o instalador 1.0.0 permanece disponível para o ambiente antigo.
+
+Para iniciar o ambiente local, execute `npm ci`, `npm ci --prefix signaling-server` e `npm run dev:secure`. Em outro terminal, execute `npm run electron:dev`. Não há administrador padrão: siga [Administração](docs/ADMIN.md) para criar o primeiro usuário. Os comandos antigos de sinalização abaixo exigem agora a configuração descrita nesse documento.
+
+Consulte o [relatório de segurança](docs/SECURITY-1.0.1.md). O servidor e o painel não foram publicados. A confirmação anterior entre duas máquinas refere-se à versão 1.0.0; a versão atual foi validada entre instâncias locais reais.
+
+O novo instalador fica em `release/Coffee-Desk-1.0.1-x64-Setup.exe`.
 
 **Café - Sistemas & Softwares**
 

@@ -1,233 +1,296 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { ServerStatus } from "../types/app";
 import { useModal } from "../context/ModalContext";
-
-const getSignalingWsUrl = (): string => {
-  if (
-    typeof window !== "undefined" &&
-    window.location &&
-    window.location.hostname
-  ) {
-    return `ws://${window.location.hostname}:8080`;
-  }
-  return "ws://localhost:8080";
-};
-
-interface UseSignalingProps {
-  onSignalingMessage?: (msg: any) => void;
-}
-
-export function useSignaling({ onSignalingMessage }: UseSignalingProps = {}) {
-  const { showConfirm, showToast } = useModal();
-  const [isRegistered, setIsRegistered] = useState(false);
-  const [serverStatus, setServerStatus] = useState<ServerStatus>("connecting");
-  const [myId, setMyId] = useState<string | null>(() =>
-    localStorage.getItem("coffee_desk_my_id"),
-  );
-
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const onMessageRef = useRef(onSignalingMessage);
-
+export function useSignaling({
+  onSignalingMessage,
+}: { onSignalingMessage?: (msg: any) => void } = {}) {
+  const { showToast, showConfirm } = useModal();
+  const [serverStatus, setServerStatus] = useState<ServerStatus>("connecting"),
+    [isRegistered, setIsRegistered] = useState(false),
+    [myId, setMyId] = useState<string | null>(null),
+    [serverError, setServerError] = useState<string | null>(null);
+  const wsRef = useRef<WebSocket | null>(null),
+    handler = useRef(onSignalingMessage),
+    call = useRef<string | null>(null),
+    peer = useRef<string | null>(null),
+    endpoint = useRef("");
   useEffect(() => {
-    onMessageRef.current = onSignalingMessage;
+    handler.current = onSignalingMessage;
   }, [onSignalingMessage]);
-
-  const sendWsMessage = useCallback((msg: object) => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
-
-  const connectToSignaling = useCallback(() => {
-    if (
-      wsRef.current &&
-      (wsRef.current.readyState === WebSocket.OPEN ||
-        wsRef.current.readyState === WebSocket.CONNECTING)
-    ) {
-      return;
-    }
-
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
-    }
-
-    setIsRegistered(false);
-    setServerStatus("connecting");
-    const ws = new WebSocket(getSignalingWsUrl());
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      if (wsRef.current !== ws) {
-        try {
-          ws.close();
-        } catch {}
-        return;
-      }
-
-      console.log("[Signaling] Conectado ao servidor.");
-      setServerStatus("connected");
-      const savedId = localStorage.getItem("coffee_desk_my_id") || undefined;
-      ws.send(
+  const sendWsMessage = useCallback((message: object) => {
+    const data = message as Record<string, unknown>;
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      const sessionTypes = [
+        "call-accepted",
+        "call-rejected",
+        "disconnect",
+        "offer",
+        "answer",
+        "ice-candidate",
+      ];
+      wsRef.current.send(
         JSON.stringify({
-          type: "register",
-          id: savedId,
-          timestamp: new Date().toISOString(),
+          ...data,
+          ...(sessionTypes.includes(String(data.type))
+            ? { callId: call.current }
+            : {}),
         }),
       );
-
-      // Keep-alive a cada 15s
-      if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
-      pingIntervalRef.current = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(
-            JSON.stringify({
-              type: "ping",
-              timestamp: new Date().toISOString(),
-            }),
-          );
-        }
-      }, 15000);
-    };
-
-    ws.onmessage = (event) => {
-      if (wsRef.current !== ws) return;
-      try {
-        const msg = JSON.parse(event.data);
-
-        // Mensagens padrão de sinalização
-        if (msg.type === "registered") {
-          console.log(`[Signaling] Registrado com sucesso. Meu ID: ${msg.id}`);
-          if (typeof msg.id !== "string" || !/^\d{3}-\d{3}-\d{3}$/.test(msg.id))
-            return;
-          setIsRegistered(true);
-          setMyId(msg.id);
-          localStorage.setItem("coffee_desk_my_id", msg.id);
-          if (window.electronAPI?.setMyId) {
-            window.electronAPI.setMyId(msg.id);
-          }
-        } else if (msg.type === "pong") {
-          setServerStatus("connected");
-        } else if (msg.type === "offer") {
-          window.dispatchEvent(
-            new CustomEvent("webrtc-offer", {
-              detail: { sdp: msg.payload?.sdp, fromId: msg.fromId },
-            }),
-          );
-        } else if (msg.type === "answer") {
-          window.dispatchEvent(
-            new CustomEvent("webrtc-answer", {
-              detail: { sdp: msg.payload?.sdp },
-            }),
-          );
-        } else if (msg.type === "ice-candidate") {
-          window.dispatchEvent(
-            new CustomEvent("webrtc-ice", {
-              detail: msg.payload,
-            }),
-          );
-        }
-
-        // Repassa para o handler customizado (chamadas, erros, etc.)
-        if (onMessageRef.current) {
-          onMessageRef.current(msg);
-        }
-      } catch (err) {
-        console.error("[Signaling] Erro ao parsear mensagem:", err);
-      }
-    };
-
-    ws.onclose = (event) => {
-      if (wsRef.current !== ws) return;
-      wsRef.current = null;
-      setIsRegistered(false);
-      setServerStatus("disconnected");
-
-      if (pingIntervalRef.current) {
-        clearInterval(pingIntervalRef.current);
-        pingIntervalRef.current = null;
-      }
-
-      if (event.code === 4001) {
-        console.warn("[Signaling] Conexão substituída por outra aba/janela.");
-        return;
-      }
-
-      console.warn("[Signaling] Desconectado. Tentando reconectar em 3s...");
-      if (reconnectTimeoutRef.current)
-        clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = setTimeout(connectToSignaling, 3000);
-    };
-
-    ws.onerror = (err) => {
-      console.error("[Signaling] Erro no WebSocket:", err);
-    };
+    }
   }, []);
-
   useEffect(() => {
-    connectToSignaling();
-    return () => {
-      if (reconnectTimeoutRef.current)
-        clearTimeout(reconnectTimeoutRef.current);
-      if (pingIntervalRef.current) {
-        clearInterval(pingIntervalRef.current);
-        pingIntervalRef.current = null;
-      }
-      if (wsRef.current) {
-        const ws = wsRef.current;
-        wsRef.current = null;
-        try {
-          ws.close();
-        } catch {}
-      }
-    };
-  }, [connectToSignaling]);
-
-  // Redefinir identidade no servidor
-  const handleResetIdentity = useCallback(
-    async (onResetLocalData?: () => void) => {
-      const confirmed = await showConfirm({
-        title: "Redefinir Dados e Identidade",
-        message:
-          "Isso irá limpar seu ID atual, histórico de conexões recentes e senhas de acesso, solicitando um novo registro ao servidor. Deseja prosseguir?",
-        type: "warning",
-        destructive: true,
-        confirmText: "Sim, Redefinir Tudo",
-        cancelText: "Cancelar",
+    let stopped = false,
+      timer: ReturnType<typeof setTimeout> | undefined,
+      heartbeat: ReturnType<typeof setInterval> | undefined,
+      lastPong = Date.now(),
+      attempt = 0,
+      generation = 0,
+      terminal = false;
+    const closeSession = () => {
+      void window.electronAPI.toggleInputControl(false).catch(() => {});
+      call.current = null;
+      peer.current = null;
+      handler.current?.({
+        type: "peer-disconnected",
+        message: "Sinalização indisponível. Sessão encerrada por segurança.",
       });
-
-      if (confirmed) {
-        localStorage.removeItem("coffee_desk_my_id");
+    };
+    async function connect() {
+      if (stopped || terminal) return;
+      const currentGeneration=++generation;
+      try {
+        const settings = await window.electronAPI.getSecuritySettings();
+        if (stopped||currentGeneration!==generation) return;
+        endpoint.current = settings.url;
+        localStorage.setItem("coffee_desk_server_url", settings.url);
+        window.dispatchEvent(
+          new CustomEvent("signaling-scope", { detail: settings.url }),
+        );
         setIsRegistered(false);
         setMyId(null);
-        if (onResetLocalData) onResetLocalData();
-
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.send(
-            JSON.stringify({
-              type: "register",
-              timestamp: new Date().toISOString(),
-            }),
-          );
-        }
-        showToast({
-          type: "success",
-          title: "Dados Redefinidos",
-          message: "Nova identidade solicitada ao servidor.",
-        });
+        setServerStatus("connecting");
+        setServerError(null);
+        const publicKey = await window.electronAPI.getDevicePublicKey(
+          settings.url,
+        );
+        if (stopped||currentGeneration!==generation) return;
+        const ws = new WebSocket(settings.url);
+        wsRef.current = ws;
+        lastPong = Date.now();
+        ws.onopen = () => {
+          if (stopped||currentGeneration!==generation) {
+            ws.close();
+            return;
+          }
+          ws.send(JSON.stringify({ type: "hello", version: 2, publicKey }));
+        };
+        ws.onmessage = (event) => {
+          void (async () => {
+            if (stopped || wsRef.current !== ws) return;
+            let msg: any;
+            try {
+              msg = JSON.parse(event.data);
+            } catch {
+              return;
+            }
+            if (msg.type === "challenge") {
+              const signature = await window.electronAPI.signDeviceChallenge(
+                settings.url,
+                msg.nonce,
+                msg.audience,
+              );
+              if (ws.readyState === WebSocket.OPEN)
+                ws.send(JSON.stringify({ type: "authenticate", signature }));
+              return;
+            }
+            if (msg.type === "registered") {
+              if (msg.version !== 2 || !/^\d{3}-\d{3}-\d{3}$/.test(msg.id))
+                return;
+              setMyId(msg.id);
+              setIsRegistered(true);
+              setServerStatus("connected");
+              setServerError(null);
+              attempt = 0;
+              lastPong = Date.now();
+              localStorage.setItem("coffee_v2_id:" + settings.url, msg.id);
+              window.electronAPI.setMyId(msg.id);
+              heartbeat = setInterval(() => {
+                if (ws.readyState === WebSocket.OPEN) {
+                  if (Date.now() - lastPong > 45000) {
+                    ws.close();
+                    return;
+                  }
+                  ws.send(JSON.stringify({ type: "ping" }));
+                }
+              }, 15000);
+              return;
+            }
+            if (msg.type === "pong") {
+              lastPong = Date.now();
+              return;
+            }
+            if (msg.type === "access-revoked") {
+              if(typeof msg.id==='string'&&/^\d{3}-\d{3}-\d{3}$/.test(msg.id))setMyId(msg.id);
+              terminal = true;
+              setServerError(msg.message ?? "Dispositivo suspenso");
+              setIsRegistered(false);
+              setServerStatus("disconnected");
+              closeSession();
+              return;
+            }
+            if (
+              msg.type === "error" &&
+              ["UPGRADE_REQUIRED", "AUTH"].includes(msg.code)
+            ) {
+              terminal = true;
+              setServerError(msg.message);
+              return;
+            }
+            if (msg.type === "call-ringing" || msg.type === "incoming-call") {
+              call.current = msg.callId;
+              peer.current = msg.fromId ?? msg.targetId;
+            }
+            if (
+              [
+                "offer",
+                "answer",
+                "ice-candidate",
+                "call-accepted",
+                "call-rejected",
+                "peer-disconnected",
+              ].includes(msg.type)
+            ) {
+              if (!msg.callId || msg.callId !== call.current) return;
+              if (msg.fromId && msg.fromId !== peer.current) return;
+            }
+            if (msg.type === "offer")
+              window.dispatchEvent(
+                new CustomEvent("webrtc-offer", {
+                  detail: { sdp: msg.payload?.sdp, fromId: msg.fromId },
+                }),
+              );
+            if (msg.type === "answer")
+              window.dispatchEvent(
+                new CustomEvent("webrtc-answer", {
+                  detail: { sdp: msg.payload?.sdp },
+                }),
+              );
+            if (msg.type === "ice-candidate")
+              window.dispatchEvent(
+                new CustomEvent("webrtc-ice", { detail: msg.payload }),
+              );
+            if (msg.type === "report-received" || msg.type === "error")
+              window.dispatchEvent(
+                new CustomEvent("device-report-result", { detail: msg }),
+              );
+            handler.current?.(msg);
+            if (
+              msg.type === "call-rejected" ||
+              msg.type === "peer-disconnected"
+            ) {
+              call.current = null;
+              peer.current = null;
+            }
+          })().catch(() => {
+            if(stopped||wsRef.current!==ws)return;
+            setServerError(
+              "Não foi possível autenticar a identidade do dispositivo",
+            );
+            terminal = true;
+            ws.close();
+          });
+        };
+        ws.onerror = () => {
+          setServerError("Não foi possível conectar ao servidor configurado");
+        };
+        ws.onclose = (e) => {
+          if (wsRef.current !== ws) return;
+          if (heartbeat) clearInterval(heartbeat);
+          wsRef.current = null;
+          setIsRegistered(false);
+          setServerStatus("disconnected");
+          if (call.current) closeSession();
+          if ([4403, 4406, 4401, 4001].includes(e.code)) terminal = true;
+          if (!stopped && !terminal)
+            timer = setTimeout(
+              () => void connect(),
+              Math.min(30000, 1000 * 2 ** Math.min(attempt++, 5)) +
+                Math.random() * 500,
+            );
+        };
+      } catch {
+        if(stopped||currentGeneration!==generation)return;
+        setServerError(
+          "Identidade protegida ou configuração do servidor indisponível",
+        );
+        setServerStatus("disconnected");
       }
+    }
+    void connect();
+    const change = () => {
+      terminal = false;
+      generation++;
+      const old=wsRef.current;wsRef.current=null;old?.close();
+      if (heartbeat) clearInterval(heartbeat);
+      if (timer) clearTimeout(timer);
+      if (call.current) closeSession();
+      void connect();
+    };
+    window.addEventListener("server-changed", change);
+    return () => {
+      stopped = true;
+      window.removeEventListener("server-changed", change);
+      if (timer) clearTimeout(timer);
+      if (heartbeat) clearInterval(heartbeat);
+      const ws = wsRef.current;
+      wsRef.current = null;
+      ws?.close();
+    };
+  }, []);
+  const handleResetIdentity = useCallback(
+    async (onResetLocalData?: () => void) => {
+      if (
+        !(await showConfirm({
+          title: "Redefinir preferências",
+          message:
+            "Isso limpa o histórico deste servidor e a senha de acesso. Sua identidade e eventuais sanções serão preservadas.",
+          confirmText: "Redefinir preferências",
+          cancelText: "Cancelar",
+        }))
+      )
+        return;
+      await window.electronAPI.resetSecurityPreferences();
+      onResetLocalData?.();
+      showToast({
+        type: "info",
+        message:
+          "Preferências redefinidas. A identidade do dispositivo foi preservada.",
+      });
     },
-    [showConfirm, showToast],
+    [showToast, showConfirm],
   );
-
+  const reportDevice = useCallback(
+    (targetId: string, category: string, description: string) => {
+      sendWsMessage({
+        type: "report-device",
+        targetId,
+        category,
+        description,
+        ...(peer.current === targetId && call.current
+          ? { callId: call.current }
+          : {}),
+      });
+    },
+    [sendWsMessage],
+  );
   return {
     wsRef,
-    isRegistered,
     serverStatus,
+    isRegistered,
     myId,
+    serverError,
     sendWsMessage,
     handleResetIdentity,
+    reportDevice,
   };
 }

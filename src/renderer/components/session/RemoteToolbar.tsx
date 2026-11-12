@@ -21,6 +21,7 @@ interface RemoteToolbarProps {
   onToggleFullscreen: () => void;
   onToggleHostControl: () => void;
   onToggleDrawer?: (tab: "clipboard" | "files") => void;
+  onReport?: () => void;
   onDisconnect?: () => void;
 }
 
@@ -36,6 +37,7 @@ export function RemoteToolbar({
   onToggleFullscreen,
   onToggleHostControl,
   onToggleDrawer,
+  onReport,
   onDisconnect,
 }: RemoteToolbarProps): JSX.Element {
   return (
@@ -298,6 +300,14 @@ export function RemoteToolbar({
           {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
         </button>
 
+        {onReport && (
+          <button
+            className="secondary-button session-report"
+            onClick={onReport}
+          >
+            Denunciar
+          </button>
+        )}
         {onDisconnect && (
           <button
             onClick={onDisconnect}

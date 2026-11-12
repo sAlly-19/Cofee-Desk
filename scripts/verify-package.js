@@ -89,7 +89,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const state = result.result?.result?.value;
     const status = await evaluate("window.electronAPI.getInputControlStatus()");
     const passed =
-      state?.version === "v1.0.0 · P2P" &&
+      state?.version === "v" + require("../package.json").version + " · P2P" &&
       state.signature === "Café - Sistemas & Softwares" &&
       state.native &&
       status.result?.result?.value?.ready === true &&
@@ -110,7 +110,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
           logs,
       );
     console.log(
-      "PASS Packaged 1.0.0: signature, native preload and Win32 helper",
+      "PASS Packaged release: signature, native preload and Win32 helper",
     );
     ws.send(
       JSON.stringify({

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Settings, Trash2, KeyRound } from "lucide-react";
 import { Modal } from "../ui/Modal";
 
@@ -25,6 +25,19 @@ export function SettingsModal({
   onResetIdentity,
   onSave,
 }: SettingsModalProps): JSX.Element | null {
+  const [serverUrl, setServerUrl] = useState("");
+  const [officialUrl, setOfficialUrl] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState("");
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (isOpen) {
+      setSaveError("");
+      void window.electronAPI.getSecuritySettings().then((s) => {
+        setServerUrl(s.url);
+        setOfficialUrl(s.officialUrl);
+      });
+    }
+  }, [isOpen]);
   const passwordRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (isOpen && focusPassword) passwordRef.current?.focus();
@@ -62,11 +75,36 @@ export function SettingsModal({
             }}
           >
             <Trash2 size={15} />
-            <span>Redefinir Identidade</span>
+            <span>Redefinir Preferências</span>
           </button>
 
           <button
-            onClick={onSave}
+            disabled={saving}
+            onClick={async () => {
+              setSaving(true);
+              setSaveError("");
+              try {
+                const before = await window.electronAPI.getSecuritySettings();
+                await window.electronAPI.setAccessPassword(
+                  unattendedPassword,
+                  unattendedEnabled,
+                );
+                const url =
+                  serverUrl === before.url
+                    ? before.url
+                    : serverUrl === officialUrl
+                      ? await window.electronAPI.useOfficialSignaling()
+                      : await window.electronAPI.setSignalingUrl(serverUrl);
+                setUnattendedPassword("");
+                if (url !== before.url)
+                  window.dispatchEvent(new Event("server-changed"));
+                onSave();
+              } catch (e) {
+                setSaveError((e as Error).message);
+              } finally {
+                setSaving(false);
+              }
+            }}
             style={{
               padding: "0.65rem 1.4rem",
               background:
@@ -95,6 +133,33 @@ export function SettingsModal({
           fontSize: "0.9rem",
         }}
       >
+        {saveError && (
+          <div role="alert" className="settings-error">
+            {saveError}
+          </div>
+        )}
+        <label className="settings-label">
+          Servidor de sinalização
+          <input
+            aria-label="Servidor de sinalização"
+            value={serverUrl}
+            onChange={(e) => setServerUrl(e.target.value)}
+            placeholder="wss://seu-servidor/ws"
+          />
+        </label>
+        {officialUrl && serverUrl !== officialUrl && (
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => setServerUrl(officialUrl)}
+          >
+            Usar serviço oficial do Coffee Desk
+          </button>
+        )}
+        <p className="settings-hint">
+          Servidores externos exigem WSS. Alterar o servidor encerra a sessão
+          atual; o histórico permanece separado por servidor.
+        </p>
         {/* Opção: Acesso Não Supervisionado */}
         <div
           style={{
@@ -123,7 +188,6 @@ export function SettingsModal({
               onChange={(e) => {
                 const val = e.target.checked;
                 setUnattendedEnabled(val);
-                localStorage.setItem("coffee_unattended_enabled", String(val));
               }}
               style={{
                 width: 18,
@@ -152,14 +216,10 @@ export function SettingsModal({
                 ref={passwordRef}
                 aria-label="Senha de acesso não supervisionado"
                 type="password"
-                placeholder="Defina a senha de acesso fixo"
+                placeholder="Nova senha (mínimo 12 caracteres)"
                 value={unattendedPassword}
                 onChange={(e) => {
                   setUnattendedPassword(e.target.value);
-                  localStorage.setItem(
-                    "coffee_unattended_password",
-                    e.target.value,
-                  );
                 }}
                 style={{
                   flex: 1,

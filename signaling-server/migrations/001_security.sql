@@ -1,0 +1,14 @@
+CREATE TABLE IF NOT EXISTS schema_migrations(version integer PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS devices(id text PRIMARY KEY CHECK(id ~ '^\d{3}-\d{3}-\d{3}$'), public_key text UNIQUE NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), last_seen timestamptz NOT NULL DEFAULT now(), status text NOT NULL DEFAULT 'active' CHECK(status IN ('active','blocked','banned')), blocked_until timestamptz, reason text);
+CREATE TABLE IF NOT EXISTS admins(id uuid PRIMARY KEY, username text UNIQUE NOT NULL, password_hash text NOT NULL, totp_encrypted text NOT NULL, last_totp_counter bigint NOT NULL DEFAULT -1, created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS admin_sessions(token_hash text PRIMARY KEY, admin_id uuid NOT NULL REFERENCES admins(id), csrf_hash text NOT NULL, expires_at timestamptz NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS sessions_expiry_idx ON admin_sessions(expires_at);
+CREATE TABLE IF NOT EXISTS sanctions(id uuid PRIMARY KEY, device_id text NOT NULL REFERENCES devices(id), admin_id uuid NOT NULL REFERENCES admins(id), action text NOT NULL CHECK(action IN ('block','ban','unblock')), reason text NOT NULL, expires_at timestamptz, created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS reports(id uuid PRIMARY KEY, reporter_id text NOT NULL REFERENCES devices(id), device_id text NOT NULL REFERENCES devices(id), category text NOT NULL CHECK(category IN ('spam','fraud','unauthorized','other')), description text NOT NULL CHECK(length(description) BETWEEN 10 AND 2000), call_id uuid, status text NOT NULL DEFAULT 'open' CHECK(status IN ('open','reviewing','substantiated','dismissed')), decision text, reviewed_by uuid REFERENCES admins(id), created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS reports_target_idx ON reports(device_id);
+CREATE INDEX IF NOT EXISTS reports_created_idx ON reports(created_at DESC);
+CREATE TABLE IF NOT EXISTS audit(id bigserial PRIMARY KEY, admin_id uuid NOT NULL REFERENCES admins(id), action text NOT NULL, target text NOT NULL, reason text NOT NULL, before_state jsonb, after_state jsonb, created_at timestamptz NOT NULL DEFAULT now());
+CREATE OR REPLACE FUNCTION prohibit_audit_mutation() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Audit records are append-only'; END $$;
+DROP TRIGGER IF EXISTS audit_immutable ON audit;
+CREATE TRIGGER audit_immutable BEFORE UPDATE OR DELETE ON audit FOR EACH ROW EXECUTE FUNCTION prohibit_audit_mutation();
+INSERT INTO schema_migrations(version) VALUES(1) ON CONFLICT DO NOTHING;

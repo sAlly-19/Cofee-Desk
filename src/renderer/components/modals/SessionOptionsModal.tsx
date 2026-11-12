@@ -9,6 +9,7 @@ interface SessionOptionsModalProps {
   onConnectDirect: (remoteId: string) => void;
   onConnectWithPassword: (remoteId: string, password: string) => void;
   onRename: (id: string, newName: string) => void;
+  onReport: (remoteId: string) => void;
   onDelete: (id: string) => void;
 }
 
@@ -18,6 +19,7 @@ export function SessionOptionsModal({
   onConnectDirect,
   onConnectWithPassword,
   onRename,
+  onReport,
   onDelete,
 }: SessionOptionsModalProps): JSX.Element | null {
   const { showPrompt, showConfirm, showToast } = useModal();
@@ -34,6 +36,15 @@ export function SessionOptionsModal({
       maxWidth={460}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+        <button
+          className="secondary-button report-button"
+          onClick={() => {
+            onReport(selectedSession.remoteId);
+            onClose();
+          }}
+        >
+          Denunciar dispositivo
+        </button>
         <button
           onClick={() => {
             const id = selectedSession.remoteId;

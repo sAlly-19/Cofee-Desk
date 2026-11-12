@@ -35,12 +35,22 @@ export function useCallManager({
   const [countdown, setCountdown] = useState<number>(30);
 
   // Configurações de Acesso Não Supervisionado
-  const [unattendedEnabled, setUnattendedEnabled] = useState<boolean>(() => {
-    return localStorage.getItem("coffee_unattended_enabled") === "true";
-  });
-  const [unattendedPassword, setUnattendedPassword] = useState<string>(() => {
-    return localStorage.getItem("coffee_unattended_password") || "";
-  });
+  const [unattendedEnabled, setUnattendedEnabled] = useState(false);
+  const [unattendedPassword, setUnattendedPassword] = useState("");
+  useEffect(() => {
+    void (async () => {
+      const legacy = localStorage.getItem("coffee_unattended_password");
+      const settings = legacy
+        ? await window.electronAPI.migrateAccessPassword(
+            legacy,
+            localStorage.getItem("coffee_unattended_enabled") === "true",
+          )
+        : await window.electronAPI.getSecuritySettings();
+      localStorage.removeItem("coffee_unattended_password");
+      localStorage.removeItem("coffee_unattended_enabled");
+      setUnattendedEnabled(settings.enabled);
+    })();
+  }, []);
 
   const callTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -137,6 +147,7 @@ export function useCallManager({
       setIncomingCall(null);
       setRemoteId(callerId);
       onCallEstablished?.(callerId);
+      void window.electronAPI.toggleInputControl(true).catch(() => {});
       setSessionRole("host");
       setConnectionId(`conn-${Date.now()}`);
       setConnectionStatus("connected");
@@ -208,7 +219,7 @@ export function useCallManager({
 
   // Processa mensagens de sinalização recebidas relevantes a chamadas
   const handleCallSignalingMessage = useCallback(
-    (msg: any) => {
+    async (msg: any) => {
       const { type, fromId, message, reason } = msg;
 
       switch (type) {
@@ -225,9 +236,8 @@ export function useCallManager({
 
           // Se acesso não supervisionado estiver ativo e senha conferir, auto-aceita
           if (
-            unattendedEnabled &&
-            unattendedPassword &&
-            msg.password === unattendedPassword
+            typeof msg.password === "string" &&
+            (await window.electronAPI.verifyAccessPassword(msg.password))
           ) {
             console.log(
               "[Signaling] Acesso não supervisionado autorizado por senha!",
@@ -239,7 +249,6 @@ export function useCallManager({
           setIncomingCall({
             fromId,
             fromName: msg.fromName || `Computador ${fromId}`,
-            password: msg.password,
             expiresAt: Date.now() + 30000,
           });
           setCountdown(30);
@@ -254,6 +263,7 @@ export function useCallManager({
             onCallEstablished?.(fromId);
           }
           setConnectionStatus("connected");
+          void window.electronAPI.toggleInputControl(true).catch(() => {});
           setSessionRole("client");
           setConnectionId(`conn-${Date.now()}`);
           setView("session");
@@ -287,7 +297,9 @@ export function useCallManager({
           handleDisconnect(false);
           showAlert({
             title: "Sessão Finalizada",
-            message: "A conexão remota foi encerrada pelo outro computador.",
+            message:
+              msg.message ||
+              "A conexão remota foi encerrada pelo outro computador.",
             type: "info",
             confirmText: "OK",
           });
@@ -341,6 +353,7 @@ export function useCallManager({
 
   const resetUnattendedSettings = useCallback(() => {
     localStorage.removeItem("coffee_unattended_enabled");
+    void window.electronAPI.resetSecurityPreferences();
     localStorage.removeItem("coffee_unattended_password");
     setUnattendedEnabled(false);
     setUnattendedPassword("");

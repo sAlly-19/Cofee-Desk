@@ -16,6 +16,7 @@ app.commandLine.appendSwitch("disable-renderer-backgrounding");
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const checks = [],
   errors = [];
+const securityProfiles = new Map();
 function check(name, condition, detail) {
   checks.push({ name, passed: !!condition, detail });
   console.log(
@@ -97,6 +98,7 @@ async function capture(win, name) {
   }
 }
 async function create(partition, width = 1672, height = 941) {
+  partition += "-" + process.pid;
   const win = new BrowserWindow({
     width,
     height,
@@ -112,6 +114,7 @@ async function create(partition, width = 1672, height = 941) {
       backgroundThrottling: false,
     },
   });
+  securityProfiles.set(win.webContents.id, partition);
   win.webContents.on("console-message", (_event, ...args) => {
     const detail = args[0];
     const message = typeof detail === "object" ? detail.message : args[1];
@@ -142,6 +145,18 @@ async function run() {
   ipcMain.on("remote:input:keyboard", (_event, data) =>
     remoteInputs.push(data),
   );
+  require(
+    path.join(root, "dist-electron/main/deviceSecurity.js"),
+  ).registerDeviceSecurity((sender) =>
+    path.join(
+      out,
+      "secure-identities",
+      securityProfiles.get(sender.id) || "default",
+    ),
+  );
+  require(
+    path.join(root, "dist-electron/main/inputManager.js"),
+  ).registerInputIpcHandlers();
   const win = await create("redesign-first");
   if (process.argv.includes("--icons")) {
     const images = await js(win, async () => {
@@ -255,7 +270,10 @@ async function run() {
     check("Registered with live signaling", isOnline);
     if (!isOnline)
       throw new Error("No registered identity from local signaling.");
-    const id = await js(win, 'localStorage.getItem("coffee_desk_my_id")');
+    const id = await js(
+      win,
+      'localStorage.getItem("coffee_v2_id:"+localStorage.getItem("coffee_desk_server_url"))',
+    );
     const originalClipboard = await clipboard.readText();
     win.showInactive();
     win.focus();
@@ -300,7 +318,7 @@ async function run() {
       "Password action does not enable unattended access",
       await js(
         win,
-        'localStorage.getItem("coffee_unattended_enabled") !== "true"',
+        "window.electronAPI.getSecuritySettings().then(s=>!s.enabled)",
       ),
     );
     await capture(win, "settings-password");
@@ -322,11 +340,17 @@ async function run() {
     await until(win, '!!document.querySelector(".access-badge.is-ready")');
     check(
       "ID persists after reload",
-      (await js(win, 'localStorage.getItem("coffee_desk_my_id")')) === id,
+      (await js(
+        win,
+        'localStorage.getItem("coffee_v2_id:"+localStorage.getItem("coffee_desk_server_url"))',
+      )) === id,
     );
     const peer = await create("redesign-second");
     await until(peer, '!!document.querySelector(".access-badge.is-ready")');
-    const peerId = await js(peer, 'localStorage.getItem("coffee_desk_my_id")');
+    const peerId = await js(
+      peer,
+      'localStorage.getItem("coffee_v2_id:"+localStorage.getItem("coffee_desk_server_url"))',
+    );
     check("Independent peer has real unique ID", !!peerId && peerId !== id);
     check(
       "Sandboxed preload exposes native APIs",
@@ -392,7 +416,7 @@ async function run() {
       "Accepted session enters persisted history",
       await js(
         win,
-        'JSON.parse(localStorage.getItem("coffee_desk_recents") || "[]").some(s=>s.remoteId===' +
+        'JSON.parse(localStorage.getItem("coffee_v2_recents:"+localStorage.getItem("coffee_desk_server_url")) || "[]").some(s=>s.remoteId===' +
           JSON.stringify(peerId) +
           ")",
       ),
@@ -532,7 +556,14 @@ async function run() {
       "Unattended preference persists",
       await js(
         passwordPeer,
-        'localStorage.getItem("coffee_unattended_enabled") === "true"',
+        "window.electronAPI.getSecuritySettings().then(s=>s.enabled)",
+      ),
+    );
+    check(
+      "Protected password verifier accepts saved password",
+      await js(
+        passwordPeer,
+        'window.electronAPI.verifyAccessPassword("coffee-desk-local-test")',
       ),
     );
     await js(win, 'document.querySelector(".options-button").click()');
@@ -619,13 +650,19 @@ async function run() {
       await until(win, '!!document.querySelector(".access-badge.is-ready")'),
     );
     await click(win, "Configurações");
-    await click(win, "Redefinir Identidade");
-    await click(win, "Sim, Redefinir Tudo");
+    await click(win, "Redefinir Preferências");
+    await until(win, '!!document.querySelector("[role=alertdialog]")');
+    await js(win, () =>
+      [...document.querySelectorAll('[role="alertdialog"] button')]
+        .find((b) => b.textContent.trim() === "Redefinir preferências")
+        .click(),
+    );
+    await until(win, '!document.querySelector(".modal-panel")');
     check(
-      "Reset receives new real identity",
+      "Reset preserves authenticated identity",
       await until(
         win,
-        '!!document.querySelector(".access-badge.is-ready") && localStorage.getItem("coffee_desk_my_id") !== ' +
+        '!!document.querySelector(".access-badge.is-ready") && localStorage.getItem("coffee_v2_id:"+localStorage.getItem("coffee_desk_server_url")) === ' +
           JSON.stringify(id),
       ),
     );
@@ -706,4 +743,9 @@ app
     );
     process.exitCode = 1;
   })
-  .finally(() => app.exit(process.exitCode || 0));
+  .finally(() => {
+    require(
+      path.join(root, "dist-electron/main/inputManager.js"),
+    ).shutdownInputManager();
+    app.exit(process.exitCode || 0);
+  });

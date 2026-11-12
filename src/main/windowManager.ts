@@ -32,13 +32,17 @@ export function createMainWindow(): BrowserWindow {
       : path.join(__dirname, "../../assets/icon.png"),
   });
 
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  mainWindow.webContents.on("will-navigate", (event, target) => {
+    if (target !== mainWindow?.webContents.getURL()) event.preventDefault();
+  });
   mainWindow.once("ready-to-show", () => {
     mainWindow?.show();
   });
 
   // Garante exibição da janela
   setTimeout(() => {
-    if (mainWindow && !mainWindow.isVisible()) {
+    if (mainWindow && !mainWindow.isVisible() && !mainWindow.isMinimized()) {
       mainWindow.show();
     }
   }, 2000);

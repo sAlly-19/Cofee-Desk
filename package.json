@@ -1,7 +1,7 @@
 {
   "name": "coffee-desk",
   "productName": "Coffee-Desk",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Coffee Desk — acesso remoto P2P para Windows",
   "author": "Café - Sistemas & Softwares",
   "license": "MIT",
@@ -25,7 +25,20 @@
     "package:win": "npm run build && electron-builder --win nsis --x64 --publish never",
     "release:source": "node scripts/prepare-source.js",
     "verify:package": "node scripts/verify-package.js",
-    "release:checksums": "node scripts/release-checksums.js"
+    "release:checksums": "node scripts/release-checksums.js",
+    "build:admin": "vite build --config admin-panel/vite.config.ts",
+    "admin:dev": "vite --config admin-panel/vite.config.ts",
+    "test:security": "node scripts/test-security.js",
+    "dev:secure": "npm run build:server && npm run build:admin && node scripts/dev-security.js",
+    "build:server": "npm run build --prefix signaling-server",
+    "admin:create:local": "node scripts/create-local-admin.js",
+    "test:admin": "node scripts/test-admin.js",
+    "audit:security": "node scripts/audit-security.js",
+    "build:hosting": "node scripts/build-hosting.js",
+    "hosting:prepare-db": "node scripts/prepare-production.js",
+    "hosting:probe": "node scripts/probe-hosting.js",
+    "hosting:configure-client": "node scripts/configure-public-service.js",
+    "test:hosting": "node scripts/test-hosting.js"
   },
   "dependencies": {
     "electron-squirrel-startup": "^1.0.1",
@@ -38,20 +51,23 @@
     "@types/node": "^20.14.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.1",
+    "@vitejs/plugin-react": "^6.3.0",
+    "7zip-bin": "5.2.0",
     "concurrently": "^8.2.2",
     "electron": "^45.2.3",
-    "electron-builder": "^24.13.3",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.28.2",
     "eslint": "^8.57.0",
     "prettier": "^3.3.2",
     "typescript": "^5.5.4",
-    "vite": "^5.4.0",
-    "wait-on": "^7.2.0",
-    "esbuild": "^0.21.5",
-    "7zip-bin": "5.2.0"
+    "vite": "^8.3.8",
+    "wait-on": "^7.2.0"
   },
   "private": true,
   "engines": {
-    "node": ">=22"
+    "node": ">=22.12.0"
+  },
+  "overrides": {
+    "minimatch@>=7.0.0 <11.0.1": "^11.0.1"
   }
 }

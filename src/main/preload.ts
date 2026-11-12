@@ -1,5 +1,5 @@
-import { contextBridge, ipcRenderer } from 'electron';
-import { IPC_CHANNELS } from '../shared/ipcChannels';
+import { contextBridge, ipcRenderer } from "electron";
+import { IPC_CHANNELS } from "../shared/ipcChannels";
 import type {
   ConnectionState,
   MouseEventData,
@@ -7,10 +7,48 @@ import type {
   ClipboardData,
   AppError,
   RemoteConnectionRequest,
-} from '../shared/types';
+} from "../shared/types";
 
 // Permite que o renderer invoque o main de forma tipada e segura
 const electronAPI = {
+  getSecuritySettings: () =>
+    ipcRenderer.invoke("security:settings") as Promise<{
+      url: string;
+      enabled: boolean;
+      hasPassword: boolean;
+      officialUrl: string | null;
+    }>,
+  setSignalingUrl: (url: string) =>
+    ipcRenderer.invoke("security:set-url", url) as Promise<string>,
+  useOfficialSignaling: () =>
+    ipcRenderer.invoke("security:use-official") as Promise<string>,
+  getDevicePublicKey: (url: string) =>
+    ipcRenderer.invoke("security:public-key", url) as Promise<string>,
+  signDeviceChallenge: (url: string, nonce: string, audience: string) =>
+    ipcRenderer.invoke(
+      "security:sign",
+      url,
+      nonce,
+      audience,
+    ) as Promise<string>,
+  setAccessPassword: (password: string, enabled: boolean) =>
+    ipcRenderer.invoke("security:password", password, enabled) as Promise<{
+      enabled: boolean;
+      hasPassword: boolean;
+    }>,
+  migrateAccessPassword: (password: string, enabled: boolean) =>
+    ipcRenderer.invoke(
+      "security:migrate-password",
+      password,
+      enabled,
+    ) as Promise<{ enabled: boolean; hasPassword: boolean }>,
+  verifyAccessPassword: (password: string) =>
+    ipcRenderer.invoke(
+      "security:verify-password",
+      password,
+    ) as Promise<boolean>,
+  resetSecurityPreferences: () =>
+    ipcRenderer.invoke("security:reset-preferences") as Promise<boolean>,
   // Janela
   minimize: () => ipcRenderer.send(IPC_CHANNELS.WINDOW_MINIMIZE),
   maximize: () => ipcRenderer.send(IPC_CHANNELS.WINDOW_MAXIMIZE),
@@ -33,9 +71,13 @@ const electronAPI = {
   disconnect: (connectionId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.CONNECT_DISCONNECT, connectionId),
   onConnectionState: (callback: (state: ConnectionState) => void) =>
-    ipcRenderer.on(IPC_CHANNELS.CONNECTION_STATE, (_event, state) => callback(state)),
+    ipcRenderer.on(IPC_CHANNELS.CONNECTION_STATE, (_event, state) =>
+      callback(state),
+    ),
   onConnectRequest: (callback: (req: RemoteConnectionRequest) => void) =>
-    ipcRenderer.on(IPC_CHANNELS.CONNECT_REQUEST, (_event, req) => callback(req)),
+    ipcRenderer.on(IPC_CHANNELS.CONNECT_REQUEST, (_event, req) =>
+      callback(req),
+    ),
 
   // Controle remoto de mouse e teclado (via WebRTC data channel)
   sendMouseEvent: (data: MouseEventData) =>
@@ -52,27 +94,34 @@ const electronAPI = {
   acceptFileTransfer: (fileId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.FILE_TRANSFER_ACCEPT, fileId),
   sendFile: (connectionId: string, filePath: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.FILE_TRANSFER_REQUEST, { connectionId, filePath }),
-  onFileTransferProgress: (callback: (progress: { fileId: string; percent: number }) => void) =>
-    ipcRenderer.on(
-      IPC_CHANNELS.FILE_TRANSFER_PROGRESS,
-      (_event, progress) => callback(progress)
+    ipcRenderer.invoke(IPC_CHANNELS.FILE_TRANSFER_REQUEST, {
+      connectionId,
+      filePath,
+    }),
+  onFileTransferProgress: (
+    callback: (progress: { fileId: string; percent: number }) => void,
+  ) =>
+    ipcRenderer.on(IPC_CHANNELS.FILE_TRANSFER_PROGRESS, (_event, progress) =>
+      callback(progress),
     ),
   onFileTransferComplete: (callback: (fileId: string) => void) =>
-    ipcRenderer.on(IPC_CHANNELS.FILE_TRANSFER_COMPLETE, (_event, fileId) => callback(fileId)),
+    ipcRenderer.on(IPC_CHANNELS.FILE_TRANSFER_COMPLETE, (_event, fileId) =>
+      callback(fileId),
+    ),
   saveFileToDownloads: (fileName: string, base64Data: string) =>
-    ipcRenderer.invoke('file:saveToDownloads', { fileName, base64Data }),
+    ipcRenderer.invoke("file:saveToDownloads", { fileName, base64Data }),
   showItemInFolder: (filePath: string) =>
-    ipcRenderer.invoke('file:showInFolder', filePath),
-  openFile: (filePath: string) =>
-    ipcRenderer.invoke('file:openFile', filePath),
+    ipcRenderer.invoke("file:showInFolder", filePath),
+  openFile: (filePath: string) => ipcRenderer.invoke("file:openFile", filePath),
 
   // Clipboard
   setClipboard: (data: ClipboardData) =>
     ipcRenderer.send(IPC_CHANNELS.CLIPBOARD_SET, data),
   getClipboard: () => ipcRenderer.invoke(IPC_CHANNELS.CLIPBOARD_GET),
   onClipboardChanged: (callback: (data: ClipboardData) => void) =>
-    ipcRenderer.on(IPC_CHANNELS.CLIPBOARD_CHANGED, (_event, data) => callback(data)),
+    ipcRenderer.on(IPC_CHANNELS.CLIPBOARD_CHANGED, (_event, data) =>
+      callback(data),
+    ),
 
   // Captura de tela
   getDesktopSources: () => ipcRenderer.invoke(IPC_CHANNELS.DESKTOP_SOURCES),
@@ -82,23 +131,29 @@ const electronAPI = {
 
   // WebRTC (sinalização e conexão peer-to-peer)
   createWebRTCOffer: (connectionId: string, sourceId: string) =>
-    ipcRenderer.invoke('webrtc:createOffer', connectionId, sourceId),
-  setWebRTCRemoteDescription: (connectionId: string, sdp: string, type: 'offer' | 'answer') =>
-    ipcRenderer.invoke('webrtc:setRemoteDescription', connectionId, sdp, type),
-  addWebRTCIceCandidate: (connectionId: string, candidate: {
-    candidate: string;
-    sdpMid: string | null;
-    sdpMLineIndex: number | null;
-    usernameFragment: string | null;
-  }) =>
-    ipcRenderer.invoke('webrtc:addIceCandidate', connectionId, candidate),
+    ipcRenderer.invoke("webrtc:createOffer", connectionId, sourceId),
+  setWebRTCRemoteDescription: (
+    connectionId: string,
+    sdp: string,
+    type: "offer" | "answer",
+  ) =>
+    ipcRenderer.invoke("webrtc:setRemoteDescription", connectionId, sdp, type),
+  addWebRTCIceCandidate: (
+    connectionId: string,
+    candidate: {
+      candidate: string;
+      sdpMid: string | null;
+      sdpMLineIndex: number | null;
+      usernameFragment: string | null;
+    },
+  ) => ipcRenderer.invoke("webrtc:addIceCandidate", connectionId, candidate),
 
   // Erros
   onError: (callback: (err: AppError) => void) =>
     ipcRenderer.on(IPC_CHANNELS.ERROR_OCCURRED, (_event, err) => callback(err)),
 };
 
-contextBridge.exposeInMainWorld('electronAPI', electronAPI);
+contextBridge.exposeInMainWorld("electronAPI", electronAPI);
 
 // Exporta tipos para uso no renderer
 export type ElectronAPI = typeof electronAPI;

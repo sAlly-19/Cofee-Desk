@@ -3,7 +3,11 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "strict": true,
     "noEmit": true,
     "jsx": "react-jsx",
@@ -20,13 +24,31 @@
     "skipLibCheck": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
-      "@shared/*": ["src/shared/*"],
-      "@main/*": ["src/main/*"],
-      "@renderer/*": ["src/renderer/*"],
-      "@assets/*": ["assets/*"]
+      "@/*": [
+        "src/*"
+      ],
+      "@shared/*": [
+        "src/shared/*"
+      ],
+      "@main/*": [
+        "src/main/*"
+      ],
+      "@renderer/*": [
+        "src/renderer/*"
+      ],
+      "@assets/*": [
+        "assets/*"
+      ]
     }
   },
-  "include": ["src/**/*", "signaling-server/src/**/*"],
-  "exclude": ["node_modules", "dist", "dist-electron"]
+  "include": [
+    "src/**/*",
+    "signaling-server/src/**/*",
+    "admin-panel/src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "dist-electron"
+  ]
 }

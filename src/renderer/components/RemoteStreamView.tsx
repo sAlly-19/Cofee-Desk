@@ -1,22 +1,33 @@
-import { useState, useRef } from 'react';
-import type { MouseEventData, KeyboardEventData, FileTransferItem } from '@shared/types';
-import { AlertTriangle } from 'lucide-react';
-import { useWebRTCPeer } from '../hooks/useWebRTCPeer';
-import { useRemoteInputCapture } from '../hooks/useRemoteInputCapture';
-import { RemoteToolbar } from './session/RemoteToolbar';
-import { HostStreamView } from './session/HostStreamView';
-import { ClientStreamView } from './session/ClientStreamView';
+import { useState, useRef } from "react";
+import type {
+  MouseEventData,
+  KeyboardEventData,
+  FileTransferItem,
+} from "@shared/types";
+import { AlertTriangle } from "lucide-react";
+import { useWebRTCPeer } from "../hooks/useWebRTCPeer";
+import { useRemoteInputCapture } from "../hooks/useRemoteInputCapture";
+import { RemoteToolbar } from "./session/RemoteToolbar";
+import { HostStreamView } from "./session/HostStreamView";
+import { ClientStreamView } from "./session/ClientStreamView";
 
 interface Props {
   connectionId: string;
   remoteId: string;
   isConnected: boolean;
-  role?: 'host' | 'client';
-  onRemoteInput?: (input: { type: 'mouse' | 'keyboard'; data: MouseEventData | KeyboardEventData }) => void;
-  onSendSignalingMessage?: (type: 'offer' | 'answer' | 'ice-candidate', payload: unknown) => void;
+  role?: "host" | "client";
+  onRemoteInput?: (input: {
+    type: "mouse" | "keyboard";
+    data: MouseEventData | KeyboardEventData;
+  }) => void;
+  onSendSignalingMessage?: (
+    type: "offer" | "answer" | "ice-candidate",
+    payload: unknown,
+  ) => void;
+  onReport?: () => void;
   onDisconnect?: () => void;
-  onToggleDrawer?: (tab: 'clipboard' | 'files') => void;
-  activeDrawer?: 'clipboard' | 'files' | null;
+  onToggleDrawer?: (tab: "clipboard" | "files") => void;
+  activeDrawer?: "clipboard" | "files" | null;
   onFilesChannelReady?: (channel: RTCDataChannel) => void;
   onFilesDropped?: (files: FileList) => void;
   activeTransfer?: FileTransferItem;
@@ -25,9 +36,10 @@ interface Props {
 export function RemoteStreamView({
   remoteId,
   isConnected,
-  role = 'client',
+  role = "client",
   onRemoteInput,
   onSendSignalingMessage,
+  onReport,
   onDisconnect,
   onToggleDrawer,
   activeDrawer,
@@ -101,13 +113,13 @@ export function RemoteStreamView({
       onKeyDown={handleKeyDown}
       onKeyUp={handleKeyUp}
       onDragEnter={(e) => {
-        if (e.dataTransfer.types.includes('Files')) {
+        if (e.dataTransfer.types.includes("Files")) {
           e.preventDefault();
           setIsDraggingFiles(true);
         }
       }}
       onDragOver={(e) => {
-        if (e.dataTransfer.types.includes('Files')) {
+        if (e.dataTransfer.types.includes("Files")) {
           e.preventDefault();
           setIsDraggingFiles(true);
         }
@@ -121,22 +133,26 @@ export function RemoteStreamView({
       onDrop={(e) => {
         e.preventDefault();
         setIsDraggingFiles(false);
-        if (e.dataTransfer.files && e.dataTransfer.files.length > 0 && onFilesDropped) {
+        if (
+          e.dataTransfer.files &&
+          e.dataTransfer.files.length > 0 &&
+          onFilesDropped
+        ) {
           onFilesDropped(e.dataTransfer.files);
         }
       }}
       style={{
-        position: 'relative',
-        width: '100%',
-        height: '100%',
+        position: "relative",
+        width: "100%",
+        height: "100%",
         minHeight: 520,
-        backgroundColor: '#040201',
-        borderRadius: isFullscreen ? 0 : '16px',
-        overflow: 'hidden',
-        display: 'flex',
-        flexDirection: 'column',
-        outline: 'none',
-        border: isFullscreen ? 'none' : '1px solid rgba(255, 140, 26, 0.2)',
+        backgroundColor: "#040201",
+        borderRadius: isFullscreen ? 0 : "16px",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        outline: "none",
+        border: isFullscreen ? "none" : "1px solid rgba(255, 140, 26, 0.2)",
       }}
     >
       {/* 1. BARRA DE FERRAMENTAS FLUTUANTE */}
@@ -152,6 +168,7 @@ export function RemoteStreamView({
         onToggleFullscreen={toggleFullscreen}
         onToggleHostControl={toggleHostControl}
         onToggleDrawer={onToggleDrawer}
+        onReport={onReport}
         onDisconnect={onDisconnect}
       />
 
@@ -159,21 +176,21 @@ export function RemoteStreamView({
       {error && (
         <div
           style={{
-            position: 'absolute',
+            position: "absolute",
             top: 60,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            backgroundColor: 'rgba(239, 68, 68, 0.92)',
-            border: '1px solid rgba(255, 255, 255, 0.2)',
-            borderRadius: '10px',
-            color: '#ffffff',
-            padding: '8px 16px',
-            fontSize: '0.85rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
+            left: "50%",
+            transform: "translateX(-50%)",
+            backgroundColor: "rgba(239, 68, 68, 0.92)",
+            border: "1px solid rgba(255, 255, 255, 0.2)",
+            borderRadius: "10px",
+            color: "#ffffff",
+            padding: "8px 16px",
+            fontSize: "0.85rem",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
             zIndex: 30,
-            backdropFilter: 'blur(10px)',
+            backdropFilter: "blur(10px)",
           }}
         >
           <AlertTriangle size={16} />
@@ -185,15 +202,15 @@ export function RemoteStreamView({
       <div
         style={{
           flex: 1,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          position: 'relative',
-          width: '100%',
-          height: '100%',
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          position: "relative",
+          width: "100%",
+          height: "100%",
         }}
       >
-        {role === 'client' ? (
+        {role === "client" ? (
           <ClientStreamView
             remoteId={remoteId}
             isReceiving={isReceiving}

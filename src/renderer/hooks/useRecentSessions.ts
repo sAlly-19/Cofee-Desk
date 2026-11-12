@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import type { RecentSession } from "../types/app";
 import { useModal } from "../context/ModalContext";
 
@@ -6,10 +6,41 @@ const DEFAULT_RECENT_SESSIONS: RecentSession[] = [];
 
 export function useRecentSessions() {
   const { showConfirm, showToast } = useModal();
+  const scope = useRef(
+    "coffee_v2_recents:" +
+      (localStorage.getItem("coffee_desk_server_url") ||
+        "ws://localhost:8080/ws"),
+  );
+  useEffect(() => {
+    const change = (event: Event) => {
+      const key = "coffee_v2_recents:" + (event as CustomEvent<string>).detail;
+      if (key === scope.current) return;
+      scope.current = key;
+      try {
+        const saved = JSON.parse(localStorage.getItem(key) || "[]");
+        setRecentSessions(
+          Array.isArray(saved)
+            ? saved.filter(
+                (s) =>
+                  s &&
+                  typeof s.id === "string" &&
+                  typeof s.name === "string" &&
+                  typeof s.remoteId === "string" &&
+                  typeof s.dateStr === "string",
+              )
+            : [],
+        );
+      } catch {
+        setRecentSessions([]);
+      }
+    };
+    window.addEventListener("signaling-scope", change);
+    return () => window.removeEventListener("signaling-scope", change);
+  }, []);
 
   const [recentSessions, setRecentSessions] = useState<RecentSession[]>(() => {
     try {
-      const saved = localStorage.getItem("coffee_desk_recents");
+      const saved = localStorage.getItem(scope.current);
       if (saved) {
         const entries: unknown = JSON.parse(saved);
         if (Array.isArray(entries))
@@ -42,7 +73,7 @@ export function useRecentSessions() {
         ...prev.filter((s) => s.remoteId !== cleanTargetId),
       ].slice(0, 10);
       try {
-        localStorage.setItem("coffee_desk_recents", JSON.stringify(updated));
+        localStorage.setItem(scope.current, JSON.stringify(updated));
       } catch {}
       return updated;
     });
@@ -55,7 +86,7 @@ export function useRecentSessions() {
           s.id === id ? { ...s, name: newName } : s,
         );
         try {
-          localStorage.setItem("coffee_desk_recents", JSON.stringify(updated));
+          localStorage.setItem(scope.current, JSON.stringify(updated));
         } catch {}
         return updated;
       });
@@ -69,7 +100,7 @@ export function useRecentSessions() {
       setRecentSessions((prev) => {
         const updated = prev.filter((s) => s.id !== id);
         try {
-          localStorage.setItem("coffee_desk_recents", JSON.stringify(updated));
+          localStorage.setItem(scope.current, JSON.stringify(updated));
         } catch {}
         return updated;
       });
@@ -91,7 +122,7 @@ export function useRecentSessions() {
     if (confirmed) {
       setRecentSessions([]);
       try {
-        localStorage.setItem("coffee_desk_recents", "[]");
+        localStorage.setItem(scope.current, "[]");
       } catch {}
       showToast({ type: "info", message: "Histórico de sessões esvaziado." });
       return true;
@@ -102,7 +133,7 @@ export function useRecentSessions() {
   const resetRecentsToDefault = useCallback(() => {
     setRecentSessions(DEFAULT_RECENT_SESSIONS);
     try {
-      localStorage.setItem("coffee_desk_recents", "[]");
+      localStorage.setItem(scope.current, "[]");
     } catch {}
   }, []);
 

@@ -4,12 +4,12 @@ const { execFileSync } = require("child_process");
 const { path7za } = require("7zip-bin");
 const root = path.resolve(__dirname, "..");
 const version = require("../package.json").version;
-const files = execFileSync("git", ["ls-files", "--cached", "-z"], {
+const files = [...new Set(execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], {
   cwd: root,
   encoding: "utf8",
 })
   .split("\0")
-  .filter(Boolean);
+  .filter(Boolean))];
 if (!files.length)
   throw new Error("Prepare os arquivos com git add . antes de gerar o ZIP.");
 if (
@@ -17,7 +17,7 @@ if (
     (p) =>
       /^(node_modules|release|artifacts|dist-electron|signaling-server\/(node_modules|dist))\//.test(
         p,
-      ) || /(^|\/)\.env($|\.)/.test(p),
+      ) || (/(^|\/)\.env($|\.)/.test(p) && !p.endsWith(".env.example") && !p.endsWith(".env.production.example")),
   )
 )
   throw new Error(

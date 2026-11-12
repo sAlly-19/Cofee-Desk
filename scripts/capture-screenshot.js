@@ -8,9 +8,10 @@ const verify = process.argv.includes("--verify");
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
 let server;
+let stopDatabase;
 function online() {
   return new Promise((resolve) => {
-    const req = http.get("http://localhost:8080", (res) => {
+    const req = http.get("http://localhost:8080/health", (res) => {
       res.resume();
       resolve(res.statusCode === 200);
     });
@@ -24,16 +25,22 @@ function online() {
 (async () => {
   fs.mkdirSync(path.join(root, "artifacts/redesign"), { recursive: true });
   if (verify && !(await online())) {
+    const { localDatabase } = await import("./local-database.mjs");
+    const db = await localDatabase("electron-postgres");
+    stopDatabase = db.stop;
+    env.DATABASE_URL = db.url;
+    env.ADMIN_ENCRYPTION_KEY = require("crypto")
+      .randomBytes(32)
+      .toString("hex");
     server = spawn(
       process.execPath,
-      [
-        "--import",
-        require("url").pathToFileURL(
-          path.join(root, "signaling-server/node_modules/tsx/dist/loader.mjs"),
-        ).href,
-        path.join(root, "signaling-server/src/index.ts"),
-      ],
-      { cwd: root, stdio: ["ignore", "ignore", "inherit"], windowsHide: true },
+      [path.join(root, "signaling-server/dist/index.js")],
+      {
+        cwd: root,
+        stdio: ["ignore", "ignore", "inherit"],
+        windowsHide: true,
+        env,
+      },
     );
     server.on("error", (err) => console.error(err));
     for (let i = 0; i < 40 && !(await online()); i++)
@@ -53,14 +60,17 @@ function online() {
   child.on("error", (err) => {
     console.error(err);
     server?.kill();
+    void stopDatabase?.();
     process.exitCode = 1;
   });
-  child.on("exit", (code) => {
+  child.on("exit", async (code) => {
     server?.kill();
+    await stopDatabase?.();
     process.exitCode = code ?? 1;
   });
-})().catch((err) => {
+})().catch(async (err) => {
   console.error(err);
   server?.kill();
+  await stopDatabase?.();
   process.exitCode = 1;
 });

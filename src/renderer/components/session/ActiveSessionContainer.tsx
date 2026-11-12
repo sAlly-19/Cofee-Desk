@@ -15,6 +15,7 @@ interface ActiveSessionContainerProps {
     type: "offer" | "answer" | "ice-candidate",
     payload: unknown,
   ) => void;
+  onReport?: () => void;
   onRequestDisconnect: () => void;
 }
 
@@ -24,6 +25,7 @@ export function ActiveSessionContainer({
   role,
   onRemoteInput,
   onSendSignalingMessage,
+  onReport,
   onRequestDisconnect,
 }: ActiveSessionContainerProps): JSX.Element {
   const [activeDrawer, setActiveDrawer] = useState<
@@ -76,6 +78,7 @@ export function ActiveSessionContainer({
           role={role}
           onRemoteInput={onRemoteInput}
           onSendSignalingMessage={onSendSignalingMessage}
+          onReport={onReport}
           onDisconnect={onRequestDisconnect}
           onToggleDrawer={toggleDrawer}
           activeDrawer={activeDrawer}
