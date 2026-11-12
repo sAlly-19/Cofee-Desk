@@ -32,8 +32,8 @@ export interface MouseEventData {
   y: number;
   normX?: number;
   normY?: number;
-  button?: 'left' | 'right' | 'middle';
-  type: 'move' | 'click' | 'scroll' | 'drag' | 'down' | 'up' | 'double';
+  button?: "left" | "right" | "middle";
+  type: "move" | "click" | "scroll" | "drag" | "down" | "up" | "double";
   scrollDelta?: { x: number; y: number };
 }
 
@@ -41,7 +41,7 @@ export interface KeyboardEventData {
   key: string;
   code: string;
   keyCode?: number;
-  type: 'press' | 'release' | 'down' | 'up' | 'text';
+  type: "press" | "release" | "down" | "up" | "text";
   text?: string;
   modifiers: {
     shift: boolean;
@@ -69,12 +69,13 @@ export interface FileTransferChunk {
 }
 
 export interface ClipboardData {
-  type: 'text' | 'html' | 'image' | 'file';
+  type: "text" | "html" | "image" | "file";
   content: string; // texto ou base64
   files?: string[]; // caminhos de arquivos
 }
 
 export interface DesktopSource {
+  isPrimary?: boolean;
   id: string;
   name: string;
   thumbnail: string; // URL ou base64
@@ -92,13 +93,13 @@ export interface AppError {
 export interface WebRTCOffer {
   connectionId: string;
   sdp: string;
-  type: 'offer';
+  type: "offer";
 }
 
 export interface WebRTCAnswer {
   connectionId: string;
   sdp: string;
-  type: 'answer';
+  type: "answer";
 }
 
 export interface WebRTCIceCandidate {
@@ -116,9 +117,10 @@ export interface FileTransferItem {
   fileId: string;
   fileName: string;
   fileSize: number;
-  status: 'pending' | 'sending' | 'receiving' | 'complete' | 'cancelled' | 'error';
+  status:
+    "pending" | "sending" | "receiving" | "complete" | "cancelled" | "error";
   progress: number;
-  direction: 'upload' | 'download';
+  direction: "upload" | "download";
   speedBytesPerSec?: number;
   transferredBytes?: number;
   savedPath?: string;
@@ -128,7 +130,7 @@ export interface FileTransferItem {
 // Clipboard (histórico sincronizado)
 export interface ClipboardHistoryItem {
   id: string;
-  type: 'text' | 'html' | 'image' | 'file';
+  type: "text" | "html" | "image" | "file";
   content: string;
   timestamp: string;
   sourceId: string;

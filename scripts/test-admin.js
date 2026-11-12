@@ -44,7 +44,14 @@ async function device(url) {
     ws.on("error", reject);
   });
   ws.on("open", () =>
-    ws.send(JSON.stringify({ type: "hello", version: 2, publicKey: key })),
+    ws.send(
+      JSON.stringify({
+        type: "hello",
+        version: 2,
+        capabilities: ["session-permissions-v1"],
+        publicKey: key,
+      }),
+    ),
   );
   const id = await ready;
   return { id, ws, messages, send: (data) => ws.send(JSON.stringify(data)) };
@@ -91,6 +98,8 @@ async function device(url) {
       if (msg.type === "incoming-call")
         b.send({
           type: "call-accepted",
+          permissions: { control: true, clipboard: true, files: true },
+          sourceKind: "screen",
           targetId: msg.fromId,
           callId: msg.callId,
         });
@@ -100,6 +109,8 @@ async function device(url) {
       if (msg.type === "incoming-call")
         c.send({
           type: "call-accepted",
+          permissions: { control: true, clipboard: true, files: true },
+          sourceKind: "screen",
           targetId: msg.fromId,
           callId: msg.callId,
         });

@@ -206,7 +206,14 @@ function check(name, ok) {
       );
       ws.on("error", reject);
       ws.on("open", () =>
-        ws.send(JSON.stringify({ type: "hello", version: 2, publicKey: key })),
+        ws.send(
+          JSON.stringify({
+            type: "hello",
+            version: 2,
+            capabilities: ["session-permissions-v1"],
+            publicKey: key,
+          }),
+        ),
       );
       ws.on("message", (raw) => {
         const m = JSON.parse(raw);

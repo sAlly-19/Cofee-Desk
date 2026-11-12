@@ -1,3 +1,6 @@
+import { registerUpdater } from "./updater";
+import { registerSessionAuthority } from "./sessionAuthority";
+import { registerHistoryHandlers } from "./historyManager";
 import { app, BrowserWindow, ipcMain } from "electron";
 import { createMainWindow, registerWindowIpcHandlers } from "./windowManager";
 import { registerIpcHandlers } from "./ipcHandlers";
@@ -45,6 +48,8 @@ if (!gotTheLock) {
 
 app.whenReady().then(() => {
   registerDeviceSecurity();
+  registerSessionAuthority();
+  registerHistoryHandlers();
   // Inicializa ou recupera o Coffee-Desk ID
   const coffeeDeskId: CoffeeDeskId = getOrCreateCoffeeDeskId();
   console.log(`[Coffee-Desk] ID da instância: ${coffeeDeskId.id}`);
@@ -68,7 +73,8 @@ app.whenReady().then(() => {
   registerInputIpcHandlers();
 
   // Cria janela principal
-  createMainWindow();
+  const mainWindow = createMainWindow();
+  registerUpdater(mainWindow);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

@@ -1,3 +1,8 @@
+import {
+  validPermissions,
+  PERMISSION_CAPABILITY,
+  type Permissions,
+} from "./permissions";
 import http, { IncomingMessage } from "http";
 import { WebSocket, WebSocketServer } from "ws";
 import { randomInt, randomUUID, createPublicKey, verify } from "crypto";
@@ -12,6 +17,7 @@ type Client = {
   ws: WebSocket;
   ip: string;
   id?: string;
+  supportsPermissions?: boolean;
   alive: boolean;
   challenge?: string;
   key?: string;
@@ -25,6 +31,8 @@ type Call = {
   caller: string;
   target: string;
   state: "pending" | "active";
+  permissions?: Permissions;
+  sourceKind?: "screen" | "window";
   timer?: ReturnType<typeof setTimeout>;
 };
 export async function startServer(config: Config) {
@@ -274,6 +282,9 @@ export async function startServer(config: Config) {
           client.ws.close(4401);
           return;
         }
+        client.supportsPermissions =
+          Array.isArray(data.capabilities) &&
+          data.capabilities.includes(PERMISSION_CAPABILITY);
         client.key = data.publicKey;
         client.challenge = token();
         send(client, {
@@ -454,6 +465,17 @@ export async function startServer(config: Config) {
       const target = byId.get(data.targetId);
       const targetDevice = await activeDevice(pool, data.targetId);
       if (
+        !client.supportsPermissions ||
+        (target && !target.supportsPermissions)
+      ) {
+        error(
+          client,
+          "UPGRADE_REQUIRED",
+          "Os dois computadores precisam de uma versão com permissões de sessão. Atualize o Coffee Desk.",
+        );
+        return;
+      }
+      if (
         data.targetId === client.id ||
         !target ||
         target.ws.readyState !== WebSocket.OPEN ||
@@ -523,13 +545,33 @@ export async function startServer(config: Config) {
         byCall.delete(call.target);
         return;
       }
+      if (
+        !validPermissions(data.permissions) ||
+        !["screen", "window"].includes(data.sourceKind)
+      ) {
+        error(client, "INVALID", "Permissões ou fonte de captura inválidas");
+        return;
+      }
       clearTimeout(call.timer);
       call.state = "active";
-      send(byId.get(call.caller), {
-        type: "call-accepted",
-        callId: call.id,
-        fromId: client.id,
-      });
+      call.permissions = {
+        ...data.permissions,
+        control: data.sourceKind === "screen" && data.permissions.control,
+      };
+      call.sourceKind = data.sourceKind;
+      for (const [id, other, role] of [
+        [call.caller, call.target, "client"],
+        [call.target, call.caller, "host"],
+      ]) {
+        send(byId.get(id), {
+          type: "call-accepted",
+          callId: call.id,
+          fromId: other,
+          role,
+          permissions: call.permissions,
+          sourceKind: call.sourceKind,
+        });
+      }
       return;
     }
     if (data.type === "disconnect") {
@@ -538,6 +580,37 @@ export async function startServer(config: Config) {
     }
     if (call.state !== "active") {
       error(client, "STATE", "Sessão não autorizada");
+      return;
+    }
+    if (data.type === "permissions-update") {
+      if (
+        client.id !== call.target ||
+        !validPermissions(data.permissions) ||
+        !["screen", "window"].includes(data.sourceKind)
+      ) {
+        error(
+          client,
+          "FORBIDDEN",
+          "Somente o anfitrião pode alterar permissões",
+        );
+        return;
+      }
+      call.sourceKind = data.sourceKind;
+      call.permissions = {
+        ...data.permissions,
+        control: data.sourceKind === "screen" && data.permissions.control,
+      };
+      for (const [id, other] of [
+        [call.caller, call.target],
+        [call.target, call.caller],
+      ])
+        send(byId.get(id), {
+          type: "permissions-updated",
+          callId: call.id,
+          fromId: other,
+          permissions: call.permissions,
+          sourceKind: call.sourceKind,
+        });
       return;
     }
     if (["offer", "answer"].includes(data.type)) {

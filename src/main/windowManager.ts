@@ -52,7 +52,7 @@ export function createMainWindow(): BrowserWindow {
   });
 
   // Carrega o renderer em dev ou produção
-  if (isDev) {
+  if (isDev && process.env.COFFEE_TEST_LOCAL_SIGNALING !== "1") {
     mainWindow.loadURL("http://localhost:5173").catch(() => {
       mainWindow?.loadFile(path.join(__dirname, "../renderer/index.html"));
     });

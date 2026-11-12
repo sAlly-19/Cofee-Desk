@@ -1,3 +1,7 @@
+import { useSessionHistory } from "./hooks/useSessionHistory";
+import { useAutoUpdate } from "./hooks/useAutoUpdate";
+import { UpdatePromptModal } from "./components/modals/UpdatePromptModal";
+import { ConnectionDetails } from "./components/session/ConnectionDetails";
 import { useFavorites } from "./hooks/useFavorites";
 import { FavoritesModal } from "./components/modals/FavoritesModal";
 import { ReportDeviceModal } from "./components/modals/ReportDeviceModal";
@@ -70,6 +74,7 @@ export default function App(): JSX.Element {
     handleClearAllRecents,
     resetRecentsToDefault,
   } = useRecentSessions();
+  const history = useSessionHistory();
 
   // Forward ref para conectar o handler de mensagens com useCallManager
   const callSignalingHandlerRef = useRef<((msg: any) => void) | null>(null);
@@ -78,6 +83,7 @@ export default function App(): JSX.Element {
   const {
     serverStatus,
     serverError,
+    diagnostic: serverDiagnostic,
     reportDevice,
     isRegistered,
     myId,
@@ -115,12 +121,25 @@ export default function App(): JSX.Element {
     requestDisconnect,
     handleCallSignalingMessage,
     resetUnattendedSettings,
+    permissions,
+    sourceKind,
+    updatePermissions,
+    answering,
+    diagnostic,
+    unattendedPermissions,
+    setUnattendedPermissions,
   } = useCallManager({
     myId,
     serverStatus: availabilityStatus,
     sendWsMessage,
     onCallEstablished: addRecentSession,
   });
+
+  const updater = useAutoUpdate(
+    view === "session" ||
+      !!incomingCall ||
+      ["calling", "ringing"].includes(connectionStatus),
+  );
 
   // Atualiza a referência de sinalização do gerenciador de chamadas
   callSignalingHandlerRef.current = (msg) => {
@@ -196,15 +215,37 @@ export default function App(): JSX.Element {
   const onFullResetIdentity = useCallback(() => {
     handleResetIdentity(() => {
       resetRecentsToDefault();
+      void history
+        .clear()
+        .catch(() =>
+          showToast({
+            type: "error",
+            message: "Não foi possível limpar o histórico completo.",
+          }),
+        );
       resetUnattendedSettings();
       setShowSettingsModal(false);
     });
-  }, [handleResetIdentity, resetRecentsToDefault, resetUnattendedSettings]);
+  }, [
+    handleResetIdentity,
+    resetRecentsToDefault,
+    resetUnattendedSettings,
+    history.clear,
+    showToast,
+  ]);
 
   // Limpeza de todas as sessões recentes com fechamento de modal
   const onClearAllRecents = useCallback(async () => {
     const cleared = await handleClearAllRecents();
     if (cleared) {
+      try {
+        await history.clear();
+      } catch {
+        showToast({
+          type: "error",
+          message: "Não foi possível limpar o histórico completo.",
+        });
+      }
       setShowAllRecentModal(false);
     }
   }, [handleClearAllRecents]);
@@ -258,6 +299,15 @@ export default function App(): JSX.Element {
               </button>
             </div>
           )}
+          {view === "home" && (
+            <ConnectionDetails
+              diagnostic={
+                availabilityStatus === "connected"
+                  ? diagnostic
+                  : serverDiagnostic
+              }
+            />
+          )}
           {view === "home" ? (
             <DashboardHome
               remoteSectionRef={remoteSectionRef}
@@ -285,7 +335,11 @@ export default function App(): JSX.Element {
             /* SESSÃO REMOTA ATIVA P2P - OCUPA 100% DO VIEWPORT */
             <div className="session-stage">
               <ActiveSessionContainer
+                key={connectionId}
                 connectionId={connectionId ?? ""}
+                permissions={permissions}
+                sourceKind={sourceKind}
+                onUpdatePermissions={updatePermissions}
                 remoteId={remoteId ?? ""}
                 role={sessionRole}
                 onRemoteInput={handleRemoteInput}
@@ -302,11 +356,19 @@ export default function App(): JSX.Element {
       <IncomingCallModal
         incomingCall={incomingCall}
         countdown={countdown}
+        answering={answering}
+        error={connectionError}
         onAccept={acceptIncomingCall}
         onReject={rejectIncomingCall}
       />
 
       <SettingsModal
+        unattendedPermissions={unattendedPermissions}
+        setUnattendedPermissions={setUnattendedPermissions}
+        onCheckUpdates={() => {
+          setShowSettingsModal(false);
+          void updater.checkNow();
+        }}
         focusPassword={focusPassword}
         isOpen={showSettingsModal}
         onClose={() => setShowSettingsModal(false)}
@@ -324,12 +386,25 @@ export default function App(): JSX.Element {
         }}
       />
 
+      <UpdatePromptModal
+        isOpen={updater.isOpen}
+        state={updater.state}
+        busy={view === "session" || !!incomingCall}
+        onClose={updater.close}
+        onCheck={() => void updater.checkNow()}
+        onDownload={updater.download}
+        onCancel={updater.cancel}
+        onInstall={updater.install}
+        onRelease={updater.openRelease}
+      />
       <HelpModal
         isOpen={showHelpModal}
         onClose={() => setShowHelpModal(false)}
       />
 
       <AllRecentSessionsModal
+        entries={history.entries}
+        error={history.error}
         isOpen={showAllRecentModal}
         onClose={() => setShowAllRecentModal(false)}
         recentSessions={recentSessions}

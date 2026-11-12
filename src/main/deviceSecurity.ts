@@ -1,3 +1,9 @@
+import {
+  FULL_PERMISSIONS,
+  VIEW_ONLY,
+  validPermissions,
+  type SessionPermissions,
+} from "../shared/session";
 import { app, ipcMain, safeStorage } from "electron";
 import { fileURLToPath } from "url";
 import { AsyncLocalStorage } from "async_hooks";
@@ -18,6 +24,7 @@ import { OFFICIAL_SIGNALING_URL } from "../shared/publicService";
 import { LOCAL_SIGNALING_URL, selectService } from "./serviceSelection";
 type Settings = {
   url: string;
+  unattendedPermissions?: SessionPermissions;
   urlSource?: "explicit" | "default";
   enabled: boolean;
   verifier?: string;
@@ -53,7 +60,15 @@ const filename = () =>
 function read(): Settings {
   try {
     const stored: Settings = JSON.parse(fs.readFileSync(filename(), "utf8"));
-    return selectService(stored, officialService());
+    return selectService(
+      {
+        ...stored,
+        unattendedPermissions:
+          stored.unattendedPermissions ??
+          (stored.enabled ? { ...FULL_PERMISSIONS } : { ...VIEW_ONLY }),
+      },
+      officialService(),
+    );
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT")
       throw new Error("Não foi possível ler a identidade protegida");
@@ -62,6 +77,7 @@ function read(): Settings {
       urlSource: "default",
       enabled: false,
       identities: {},
+      unattendedPermissions: { ...VIEW_ONLY },
     };
   }
 }
@@ -151,7 +167,15 @@ export function registerDeviceSecurity(
       enabled: state.enabled,
       hasPassword: !!state.verifier,
       officialUrl: officialService() || null,
+      unattendedPermissions: state.unattendedPermissions ?? { ...VIEW_ONLY },
     };
+  });
+  handle("security:permissions", (permissions: unknown) => {
+    if (!validPermissions(permissions)) throw new Error("Permissões inválidas");
+    const state = read();
+    state.unattendedPermissions = { ...permissions };
+    write(state);
+    return state.unattendedPermissions;
   });
   handle("security:set-url", (url: unknown) => {
     if (typeof url !== "string" || url.length > 2048)
@@ -225,41 +249,49 @@ export function registerDeviceSecurity(
       ).toString("base64");
     },
   );
-  handle("security:password", async (password: unknown, enabled: unknown) => {
-    if (
-      typeof password !== "string" ||
-      password.length > 256 ||
-      typeof enabled !== "boolean"
-    )
-      throw new Error("Configuração inválida");
-    if (derivations >= 2) throw new Error("Aguarde a operação anterior");
-    derivations++;
-    try {
-      let verifier: string | undefined;
-      if (password) {
-        if (password.length < 12)
-          throw new Error("Use pelo menos 12 caracteres na senha");
-        const salt = randomBytes(16).toString("hex");
-        verifier = salt + ":" + (await derive(password, salt)).toString("hex");
+  handle(
+    "security:password",
+    async (password: unknown, enabled: unknown, permissions?: unknown) => {
+      if (permissions !== undefined && !validPermissions(permissions))
+        throw new Error("Permissões inválidas");
+      if (
+        typeof password !== "string" ||
+        password.length > 256 ||
+        typeof enabled !== "boolean"
+      )
+        throw new Error("Configuração inválida");
+      if (derivations >= 2) throw new Error("Aguarde a operação anterior");
+      derivations++;
+      try {
+        let verifier: string | undefined;
+        if (password) {
+          if (password.length < 12)
+            throw new Error("Use pelo menos 12 caracteres na senha");
+          const salt = randomBytes(16).toString("hex");
+          verifier =
+            salt + ":" + (await derive(password, salt)).toString("hex");
+        }
+        const state = read();
+        if (verifier) {
+          state.verifier = verifier;
+          delete state.passwordNeedsUpgrade;
+        }
+        if (enabled && state.passwordNeedsUpgrade)
+          throw new Error(
+            "A senha migrada precisa ser substituída por uma senha com pelo menos 12 caracteres",
+          );
+        if (enabled && !state.verifier)
+          throw new Error("Defina uma senha antes de ativar");
+        state.enabled = enabled;
+        if (validPermissions(permissions))
+          state.unattendedPermissions = { ...permissions };
+        write(state);
+        return { enabled: state.enabled, hasPassword: !!state.verifier };
+      } finally {
+        derivations--;
       }
-      const state = read();
-      if (verifier) {
-        state.verifier = verifier;
-        delete state.passwordNeedsUpgrade;
-      }
-      if (enabled && state.passwordNeedsUpgrade)
-        throw new Error(
-          "A senha migrada precisa ser substituída por uma senha com pelo menos 12 caracteres",
-        );
-      if (enabled && !state.verifier)
-        throw new Error("Defina uma senha antes de ativar");
-      state.enabled = enabled;
-      write(state);
-      return { enabled: state.enabled, hasPassword: !!state.verifier };
-    } finally {
-      derivations--;
-    }
-  });
+    },
+  );
   handle(
     "security:migrate-password",
     async (password: unknown, enabled: unknown) => {
@@ -281,6 +313,9 @@ export function registerDeviceSecurity(
           if (!state.verifier) {
             state.verifier = verifier;
             state.passwordNeedsUpgrade = password.length < 12;
+            state.unattendedPermissions = enabled
+              ? { ...FULL_PERMISSIONS }
+              : { ...VIEW_ONLY };
             state.enabled = enabled && !state.passwordNeedsUpgrade;
             write(state);
           }
@@ -313,6 +348,7 @@ export function registerDeviceSecurity(
   handle("security:reset-preferences", () => {
     const state = read();
     state.enabled = false;
+    state.unattendedPermissions = { ...VIEW_ONLY };
     delete state.verifier;
     write(state);
     return true;

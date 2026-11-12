@@ -1,3 +1,5 @@
+import type { SessionPermissions } from "../../shared/session";
+import { ConnectionDetails } from "./session/ConnectionDetails";
 import { useState, useRef } from "react";
 import type {
   MouseEventData,
@@ -13,6 +15,7 @@ import { ClientStreamView } from "./session/ClientStreamView";
 
 interface Props {
   connectionId: string;
+  permissions: SessionPermissions;
   remoteId: string;
   isConnected: boolean;
   role?: "host" | "client";
@@ -35,6 +38,7 @@ interface Props {
 
 export function RemoteStreamView({
   remoteId,
+  permissions,
   isConnected,
   role = "client",
   onRemoteInput,
@@ -58,7 +62,8 @@ export function RemoteStreamView({
   const {
     dataChannelRef,
     isReceiving,
-    isVirtualStream,
+    isSharing,
+    stats,
     error,
     peerState,
     switchToRealScreen,
@@ -66,6 +71,7 @@ export function RemoteStreamView({
     remoteId,
     isConnected,
     role,
+    permissions,
     onRemoteInput,
     onSendSignalingMessage,
     onFilesChannelReady,
@@ -89,6 +95,7 @@ export function RemoteStreamView({
     handleKeyUp,
   } = useRemoteInputCapture({
     role,
+    allowed: permissions.control,
     dataChannelRef,
     containerRef,
   });
@@ -134,6 +141,7 @@ export function RemoteStreamView({
         e.preventDefault();
         setIsDraggingFiles(false);
         if (
+          permissions.files &&
           e.dataTransfer.files &&
           e.dataTransfer.files.length > 0 &&
           onFilesDropped
@@ -162,7 +170,8 @@ export function RemoteStreamView({
         peerState={peerState}
         isKeyboardFocused={isKeyboardFocused}
         isFullscreen={isFullscreen}
-        hostControlEnabled={hostControlEnabled}
+        hostControlEnabled={hostControlEnabled && permissions.control}
+        permissions={permissions}
         activeDrawer={activeDrawer}
         activeTransfer={activeTransfer}
         onToggleFullscreen={toggleFullscreen}
@@ -172,6 +181,28 @@ export function RemoteStreamView({
         onDisconnect={onDisconnect}
       />
 
+      <div className="session-diagnostic">
+        <ConnectionDetails
+          diagnostic={{
+            stage: peerState.startsWith("capture-") ? "capture" : "webrtc",
+            code:
+              peerState === "capture-failed"
+                ? "CAPTURE_FAILED"
+                : peerState === "connected"
+                  ? "MEDIA_CONNECTED"
+                  : peerState === "failed"
+                    ? "ICE_FAILED"
+                    : "MEDIA_CONNECTING",
+            state:
+              peerState === "connected"
+                ? "ready"
+                : error
+                  ? "failed"
+                  : "waiting",
+            stats,
+          }}
+        />
+      </div>
       {/* 2. ERRO SOBREPOSTO */}
       {error && (
         <div
@@ -227,7 +258,7 @@ export function RemoteStreamView({
         ) : (
           <HostStreamView
             remoteId={remoteId}
-            isVirtualStream={isVirtualStream}
+            isSharing={isSharing}
             localVideoRef={localVideoRef}
             onSwitchToRealScreen={switchToRealScreen}
           />

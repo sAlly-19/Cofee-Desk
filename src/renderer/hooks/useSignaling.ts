@@ -1,3 +1,4 @@
+import type { ConnectionDiagnostic } from "../../shared/session";
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { ServerStatus } from "../types/app";
 import { useModal } from "../context/ModalContext";
@@ -5,6 +6,11 @@ export function useSignaling({
   onSignalingMessage,
 }: { onSignalingMessage?: (msg: any) => void } = {}) {
   const { showToast, showConfirm } = useModal();
+  const [diagnostic, setDiagnostic] = useState<ConnectionDiagnostic>({
+    stage: "signaling",
+    code: "CONNECTING",
+    state: "waiting",
+  });
   const [serverStatus, setServerStatus] = useState<ServerStatus>("connecting"),
     [isRegistered, setIsRegistered] = useState(false),
     [myId, setMyId] = useState<string | null>(null),
@@ -27,6 +33,7 @@ export function useSignaling({
         "offer",
         "answer",
         "ice-candidate",
+        "permissions-update",
       ];
       wsRef.current.send(
         JSON.stringify({
@@ -57,10 +64,15 @@ export function useSignaling({
     };
     async function connect() {
       if (stopped || terminal) return;
-      const currentGeneration=++generation;
+      const currentGeneration = ++generation;
       try {
+        setDiagnostic({
+          stage: "signaling",
+          code: "CONNECTING",
+          state: "waiting",
+        });
         const settings = await window.electronAPI.getSecuritySettings();
-        if (stopped||currentGeneration!==generation) return;
+        if (stopped || currentGeneration !== generation) return;
         endpoint.current = settings.url;
         localStorage.setItem("coffee_desk_server_url", settings.url);
         window.dispatchEvent(
@@ -73,16 +85,23 @@ export function useSignaling({
         const publicKey = await window.electronAPI.getDevicePublicKey(
           settings.url,
         );
-        if (stopped||currentGeneration!==generation) return;
+        if (stopped || currentGeneration !== generation) return;
         const ws = new WebSocket(settings.url);
         wsRef.current = ws;
         lastPong = Date.now();
         ws.onopen = () => {
-          if (stopped||currentGeneration!==generation) {
+          if (stopped || currentGeneration !== generation) {
             ws.close();
             return;
           }
-          ws.send(JSON.stringify({ type: "hello", version: 2, publicKey }));
+          ws.send(
+            JSON.stringify({
+              type: "hello",
+              version: 2,
+              publicKey,
+              capabilities: ["session-permissions-v1"],
+            }),
+          );
         };
         ws.onmessage = (event) => {
           void (async () => {
@@ -94,6 +113,11 @@ export function useSignaling({
               return;
             }
             if (msg.type === "challenge") {
+              setDiagnostic({
+                stage: "authentication",
+                code: "AUTHENTICATING",
+                state: "waiting",
+              });
               const signature = await window.electronAPI.signDeviceChallenge(
                 settings.url,
                 msg.nonce,
@@ -106,6 +130,11 @@ export function useSignaling({
             if (msg.type === "registered") {
               if (msg.version !== 2 || !/^\d{3}-\d{3}-\d{3}$/.test(msg.id))
                 return;
+              setDiagnostic({
+                stage: "authentication",
+                code: "REGISTERED",
+                state: "ready",
+              });
               setMyId(msg.id);
               setIsRegistered(true);
               setServerStatus("connected");
@@ -130,7 +159,11 @@ export function useSignaling({
               return;
             }
             if (msg.type === "access-revoked") {
-              if(typeof msg.id==='string'&&/^\d{3}-\d{3}-\d{3}$/.test(msg.id))setMyId(msg.id);
+              if (
+                typeof msg.id === "string" &&
+                /^\d{3}-\d{3}-\d{3}$/.test(msg.id)
+              )
+                setMyId(msg.id);
               terminal = true;
               setServerError(msg.message ?? "Dispositivo suspenso");
               setIsRegistered(false);
@@ -142,6 +175,23 @@ export function useSignaling({
               msg.type === "error" &&
               ["UPGRADE_REQUIRED", "AUTH"].includes(msg.code)
             ) {
+              if (msg.code === "UPGRADE_REQUIRED" && call.current) {
+                handler.current?.(msg);
+                setDiagnostic({
+                  stage: "call",
+                  code: msg.code,
+                  state: "failed",
+                });
+                call.current = null;
+                peer.current = null;
+                return;
+              }
+              setDiagnostic({
+                stage: "authentication",
+                code: msg.code,
+                state: "failed",
+              });
+              handler.current?.(msg);
               terminal = true;
               setServerError(msg.message);
               return;
@@ -156,6 +206,7 @@ export function useSignaling({
                 "answer",
                 "ice-candidate",
                 "call-accepted",
+                "permissions-updated",
                 "call-rejected",
                 "peer-disconnected",
               ].includes(msg.type)
@@ -192,7 +243,7 @@ export function useSignaling({
               peer.current = null;
             }
           })().catch(() => {
-            if(stopped||wsRef.current!==ws)return;
+            if (stopped || wsRef.current !== ws) return;
             setServerError(
               "Não foi possível autenticar a identidade do dispositivo",
             );
@@ -201,7 +252,14 @@ export function useSignaling({
           });
         };
         ws.onerror = () => {
-          setServerError("Não foi possível conectar ao servidor configurado");
+          setDiagnostic({
+            stage: "signaling",
+            code: "TRANSPORT_FAILED",
+            state: "failed",
+          });
+          setServerError(
+            "Não foi possível conectar ao serviço. Ele pode estar indisponível ou iniciando após um período parado.",
+          );
         };
         ws.onclose = (e) => {
           if (wsRef.current !== ws) return;
@@ -219,7 +277,7 @@ export function useSignaling({
             );
         };
       } catch {
-        if(stopped||currentGeneration!==generation)return;
+        if (stopped || currentGeneration !== generation) return;
         setServerError(
           "Identidade protegida ou configuração do servidor indisponível",
         );
@@ -230,7 +288,9 @@ export function useSignaling({
     const change = () => {
       terminal = false;
       generation++;
-      const old=wsRef.current;wsRef.current=null;old?.close();
+      const old = wsRef.current;
+      wsRef.current = null;
+      old?.close();
       if (heartbeat) clearInterval(heartbeat);
       if (timer) clearTimeout(timer);
       if (call.current) closeSession();
@@ -285,6 +345,7 @@ export function useSignaling({
   );
   return {
     wsRef,
+    diagnostic,
     serverStatus,
     isRegistered,
     myId,

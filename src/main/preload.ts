@@ -1,3 +1,8 @@
+import type { UpdaterState } from "../shared/updater";
+import type {
+  SessionPermissions,
+  SessionHistoryEntry,
+} from "../shared/session";
 import { contextBridge, ipcRenderer } from "electron";
 import { IPC_CHANNELS } from "../shared/ipcChannels";
 import type {
@@ -11,12 +16,54 @@ import type {
 
 // Permite que o renderer invoque o main de forma tipada e segura
 const electronAPI = {
+ onCaptureUnavailable:(callback:()=>void)=>{const listener=()=>callback();ipcRenderer.on('capture:unavailable',listener);return()=>{ipcRenderer.removeListener('capture:unavailable',listener);};},
+  updater: {
+    getState: () =>
+      ipcRenderer.invoke("updater:getState") as Promise<UpdaterState>,
+    check: () => ipcRenderer.invoke("updater:check") as Promise<UpdaterState>,
+    download: () => ipcRenderer.invoke("updater:download"),
+    cancel: () => ipcRenderer.invoke("updater:cancel"),
+    install: () => ipcRenderer.invoke("updater:install"),
+    openRelease: () => ipcRenderer.invoke("updater:openRelease"),
+    onStatusChange: (callback: (s: UpdaterState) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, s: UpdaterState) =>
+        callback(s);
+      ipcRenderer.on("updater:statusChange", listener);
+      return () => {
+        ipcRenderer.removeListener("updater:statusChange", listener);
+      };
+    },
+  },
+  setSessionPending: (value: boolean) =>
+    ipcRenderer.invoke("session:pending", value),
+  readSessionClipboard: () =>
+    ipcRenderer.invoke("session:clipboard-read") as Promise<string>,
+  applySessionClipboard: (text: string) =>
+    ipcRenderer.invoke("session:clipboard-write", text) as Promise<boolean>,
+  confirmSession: (
+    state: {
+      callId: string;
+      role: "host" | "client";
+      permissions: SessionPermissions;
+    } | null,
+  ) => ipcRenderer.invoke("session:confirmed", state) as Promise<boolean>,
+  historyList: (url: string) =>
+    ipcRenderer.invoke("history:list", url) as Promise<SessionHistoryEntry[]>,
+  historyWrite: (url: string, entry: SessionHistoryEntry) =>
+    ipcRenderer.invoke(
+      "history:write",
+      url,
+      entry,
+    ) as Promise<SessionHistoryEntry>,
+  historyClear: (url: string) =>
+    ipcRenderer.invoke("history:clear", url) as Promise<boolean>,
   getSecuritySettings: () =>
     ipcRenderer.invoke("security:settings") as Promise<{
       url: string;
       enabled: boolean;
       hasPassword: boolean;
       officialUrl: string | null;
+      unattendedPermissions: SessionPermissions;
     }>,
   setSignalingUrl: (url: string) =>
     ipcRenderer.invoke("security:set-url", url) as Promise<string>,
@@ -31,8 +78,22 @@ const electronAPI = {
       nonce,
       audience,
     ) as Promise<string>,
-  setAccessPassword: (password: string, enabled: boolean) =>
-    ipcRenderer.invoke("security:password", password, enabled) as Promise<{
+  setUnattendedPermissions: (permissions: SessionPermissions) =>
+    ipcRenderer.invoke(
+      "security:permissions",
+      permissions,
+    ) as Promise<SessionPermissions>,
+  setAccessPassword: (
+    password: string,
+    enabled: boolean,
+    permissions?: SessionPermissions,
+  ) =>
+    ipcRenderer.invoke(
+      "security:password",
+      password,
+      enabled,
+      permissions,
+    ) as Promise<{
       enabled: boolean;
       hasPassword: boolean;
     }>,

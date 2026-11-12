@@ -6,359 +6,444 @@ import type {
   ServerStatus,
   IncomingCall,
 } from "../types/app";
+import {
+  FULL_PERMISSIONS,
+  VIEW_ONLY,
+  validPermissions,
+  type SessionPermissions,
+  type SessionHistoryEntry,
+  type ConnectionDiagnostic,
+} from "../../shared/session";
 import { useModal } from "../context/ModalContext";
-
-interface UseCallManagerProps {
+interface Props {
   myId: string | null;
   serverStatus: ServerStatus;
   sendWsMessage: (msg: object) => void;
-  onCallEstablished?: (targetId: string) => void;
+  onCallEstablished?: (id: string) => void;
 }
-
 export function useCallManager({
   myId,
   serverStatus,
   sendWsMessage,
   onCallEstablished,
-}: UseCallManagerProps) {
-  const { showAlert, showConfirm, showToast } = useModal();
-
-  const [view, setView] = useState<View>("home");
-  const [sessionRole, setSessionRole] = useState<SessionRole>("client");
+}: Props) {
+  const { showConfirm, showToast } = useModal();
+  const [view, setView] = useState<View>("home"),
+    [sessionRole, setSessionRole] = useState<SessionRole>("client");
   const [connectionStatus, setConnectionStatus] =
-    useState<ConnectionStatus>("idle");
-  const [remoteId, setRemoteId] = useState<string>("");
-  const [connectionId, setConnectionId] = useState<string | null>(null);
-  const [connectionError, setConnectionError] = useState<string | null>(null);
-
-  const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
-  const [countdown, setCountdown] = useState<number>(30);
-
-  // Configurações de Acesso Não Supervisionado
-  const [unattendedEnabled, setUnattendedEnabled] = useState(false);
-  const [unattendedPassword, setUnattendedPassword] = useState("");
+      useState<ConnectionStatus>("idle"),
+    [remoteId, setRemoteId] = useState("");
+  const [connectionId, setConnectionId] = useState<string | null>(null),
+    [connectionError, setConnectionError] = useState<string | null>(null);
+  const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null),
+    [countdown, setCountdown] = useState(30),
+    [answering, setAnswering] = useState(false);
+  const [permissions, setPermissions] = useState<SessionPermissions>({
+      ...VIEW_ONLY,
+    }),
+    [sourceKind, setSourceKind] = useState<"screen" | "window">("screen");
+  const [diagnostic, setDiagnostic] = useState<ConnectionDiagnostic>({
+    stage: "call",
+    code: "IDLE",
+    state: "waiting",
+  });
+  const [unattendedEnabled, setUnattendedEnabled] = useState(false),
+    [unattendedPassword, setUnattendedPassword] = useState("");
+  const [unattendedPermissions, setUnattendedPermissions] =
+    useState<SessionPermissions>({ ...VIEW_ONLY });
+  const current = useRef<{
+    callId?: string;
+    remoteId: string;
+    role: SessionRole;
+    entry: SessionHistoryEntry;
+  } | null>(null);
+  const timeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const persist = useCallback(
+    (entry: SessionHistoryEntry) => {
+      const scope = localStorage.getItem("coffee_desk_server_url");
+      if (!scope) return;
+      void window.electronAPI
+        .historyWrite(scope, entry)
+        .then(() => window.dispatchEvent(new Event("history-changed")))
+        .catch(() =>
+          showToast({
+            type: "error",
+            message: "Não foi possível salvar o histórico.",
+          }),
+        );
+    },
+    [showToast],
+  );
+  const begin = useCallback(
+    (id: string, role: SessionRole) => {
+      const entry: SessionHistoryEntry = {
+        id: crypto.randomUUID(),
+        remoteId: id,
+        name: "Computador " + id.slice(0, 3),
+        direction: role === "host" ? "incoming" : "outgoing",
+        result: "calling",
+        startedAt: new Date().toISOString(),
+      };
+      current.current = { remoteId: id, role, entry };
+      void window.electronAPI.setSessionPending(true).catch(() => {});
+      persist(entry);
+      return current.current;
+    },
+    [persist],
+  );
+  const finish = useCallback(
+    (
+      result: "completed" | "failed" | "rejected" | "cancelled",
+      reason: string,
+    ) => {
+      if (current.current) {
+        const c = current.current;
+        persist({
+          ...c.entry,
+          callId: c.callId,
+          result,
+          reason,
+          endedAt: new Date().toISOString(),
+        });
+        current.current = null;
+      }
+      if (timeout.current) clearTimeout(timeout.current);
+      void window.electronAPI.setSessionPending(false).catch(() => {});
+      void window.electronAPI.confirmSession(null).catch(() => {});
+      void window.electronAPI.toggleInputControl(false).catch(() => {});
+      setIncomingCall(null);
+      setAnswering(false);
+      setConnectionId(null);
+      setPermissions({ ...VIEW_ONLY });
+      setView("home");
+    },
+    [persist],
+  );
   useEffect(() => {
     void (async () => {
       const legacy = localStorage.getItem("coffee_unattended_password");
-      const settings = legacy
-        ? await window.electronAPI.migrateAccessPassword(
-            legacy,
-            localStorage.getItem("coffee_unattended_enabled") === "true",
-          )
-        : await window.electronAPI.getSecuritySettings();
+      if (legacy)
+        await window.electronAPI.migrateAccessPassword(
+          legacy,
+          localStorage.getItem("coffee_unattended_enabled") === "true",
+        );
+      const s = await window.electronAPI.getSecuritySettings();
+      setUnattendedEnabled(s.enabled);
+      setUnattendedPermissions(s.unattendedPermissions);
       localStorage.removeItem("coffee_unattended_password");
       localStorage.removeItem("coffee_unattended_enabled");
-      setUnattendedEnabled(settings.enabled);
-    })();
+    })().catch(() =>
+      setConnectionError(
+        "Não foi possível carregar as preferências de acesso.",
+      ),
+    );
   }, []);
-
-  const callTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Iniciar chamada para ID remoto
   const handleConnectWithId = useCallback(
-    (targetId: string, customPassword?: string) => {
-      const digits = targetId.replace(/\D/g, "");
-      const cleanTargetId =
+    (id: string, password?: string) => {
+      const digits = id.replace(/\D/g, "");
+      const target =
         digits.length === 9 ? digits.match(/.{3}/g)!.join("-") : "";
-      if (!cleanTargetId) {
-        setConnectionError("Informe os 9 dígitos do ID do computador remoto.");
+      if (!target || target === myId) {
+        setConnectionError(
+          !target
+            ? "Informe os 9 dígitos do ID do computador remoto."
+            : "Você não pode conectar ao seu próprio ID.",
+        );
         return;
       }
-
-      if (cleanTargetId === myId) {
-        showAlert({
-          title: "ID Inválido",
-          message: "Você não pode conectar ao seu próprio computador.",
-          type: "warning",
-        });
-        setConnectionError("Você não pode conectar ao seu próprio ID.");
-        setConnectionStatus("error");
-        return;
-      }
-
       if (serverStatus !== "connected") {
-        showAlert({
-          title: "Servidor Desconectado",
-          message:
-            "Você precisa estar conectado ao servidor de sinalização para iniciar uma chamada.",
-          type: "error",
-        });
-        setConnectionError("Servidor de sinalização desconectado.");
-        setConnectionStatus("error");
+        setConnectionError("Conecte ao serviço antes de iniciar uma chamada.");
         return;
       }
-
+      if (current.current) return;
+      begin(target, "client");
+      setRemoteId(target);
       setConnectionError(null);
       setConnectionStatus("calling");
-      setRemoteId(cleanTargetId);
-
-      // Envia requisição de conexão ao Signaling Server
+      setDiagnostic({ stage: "call", code: "REQUESTING", state: "waiting" });
       sendWsMessage({
         type: "connect-request",
-        targetId: cleanTargetId,
-        fromId: myId,
-        fromName: `Computador ${myId}`,
-        password: customPassword,
-        timestamp: new Date().toISOString(),
+        targetId: target,
+        fromName: "Computador remoto",
+        ...(password ? { password } : {}),
       });
-
-      // Timeout de 30 segundos
-      if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
-      callTimeoutRef.current = setTimeout(() => {
+      timeout.current = setTimeout(() => {
+        sendWsMessage({ type: "disconnect", targetId: target });
+        finish("failed", "EXPIRED");
         setConnectionStatus("error");
         setConnectionError(
           "Tempo esgotado. O computador remoto não respondeu.",
         );
-        showAlert({
-          title: "Tempo Esgotado",
-          message:
-            "O computador remoto não atendeu à solicitação de conexão a tempo.",
-          type: "warning",
-        });
-      }, 30000);
+      }, 35000);
     },
-    [myId, serverStatus, showAlert, sendWsMessage, onCallEstablished],
+    [myId, serverStatus, begin, finish, sendWsMessage],
   );
-
-  const handleConnect = useCallback(() => {
-    handleConnectWithId(remoteId);
-  }, [remoteId, handleConnectWithId]);
-
-  // Cancelar chamada em andamento
   const handleCancelCall = useCallback(() => {
-    if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
-    sendWsMessage({
-      type: "disconnect",
-      targetId: remoteId,
-      fromId: myId,
-      timestamp: new Date().toISOString(),
-    });
+    sendWsMessage({ type: "disconnect", targetId: current.current?.remoteId });
+    finish("cancelled", "CANCELLED");
     setConnectionStatus("idle");
     setConnectionError(null);
-    showToast({
-      type: "info",
-      message: "Chamada cancelada.",
-    });
-  }, [remoteId, myId, sendWsMessage, showToast]);
-
-  // Aceitar chamada recebida
+  }, [finish, sendWsMessage]);
   const acceptIncomingCall = useCallback(
-    (callerId: string) => {
-      setIncomingCall(null);
-      setRemoteId(callerId);
-      onCallEstablished?.(callerId);
-      void window.electronAPI.toggleInputControl(true).catch(() => {});
-      setSessionRole("host");
-      setConnectionId(`conn-${Date.now()}`);
-      setConnectionStatus("connected");
-      setView("session");
-
-      sendWsMessage({
-        type: "call-accepted",
-        targetId: callerId,
-        fromId: myId,
-        timestamp: new Date().toISOString(),
-      });
-    },
-    [myId, sendWsMessage, onCallEstablished],
-  );
-
-  // Rejeitar chamada recebida
-  const rejectIncomingCall = useCallback(
-    (callerId: string, reason?: string) => {
-      setIncomingCall(null);
-      sendWsMessage({
-        type: "call-rejected",
-        targetId: callerId,
-        fromId: myId,
-        reason: reason || "Conexão rejeitada pelo usuário.",
-        timestamp: new Date().toISOString(),
-      });
-      showToast({
-        type: "info",
-        message: "Chamada recebida rejeitada.",
-      });
-    },
-    [myId, sendWsMessage, showToast],
-  );
-
-  // Desconectar da sessão
-  const handleDisconnect = useCallback(
-    (notifyPeer = true) => {
-      if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
-      if (notifyPeer)
-        sendWsMessage({
-          type: "disconnect",
-          targetId: remoteId,
-          fromId: myId,
-          timestamp: new Date().toISOString(),
-        });
-      setConnectionStatus("idle");
-      setIncomingCall(null);
+    async (
+      id: string,
+      chosen: SessionPermissions = FULL_PERMISSIONS,
+      sourceId?: string,
+    ) => {
+      if (answering || current.current?.role !== "host") return;
+      setAnswering(true);
       setConnectionError(null);
-      setConnectionId(null);
-      setView("home");
-    },
-    [remoteId, myId, sendWsMessage],
-  );
-
-  const requestDisconnect = useCallback(async () => {
-    const confirmed = await showConfirm({
-      title: "Encerrar Sessão Remota",
-      message: `Tem certeza que deseja encerrar a conexão com o computador ${remoteId}?`,
-      type: "warning",
-      destructive: true,
-      confirmText: "Encerrar Sessão",
-      cancelText: "Continuar Conectado",
-    });
-    if (confirmed) {
-      handleDisconnect();
-      showToast({ type: "info", message: "Sessão remota encerrada." });
-    }
-  }, [remoteId, showConfirm, handleDisconnect, showToast]);
-
-  // Processa mensagens de sinalização recebidas relevantes a chamadas
-  const handleCallSignalingMessage = useCallback(
-    async (msg: any) => {
-      const { type, fromId, message, reason } = msg;
-
-      switch (type) {
-        case "call-ringing": {
-          console.log(
-            "[Signaling] Chamada em andamento, aguardando resposta...",
-          );
-          setConnectionStatus("ringing");
-          break;
-        }
-
-        case "incoming-call": {
-          console.log(`[Signaling] Chamada recebida de: ${fromId}`);
-
-          // Se acesso não supervisionado estiver ativo e senha conferir, auto-aceita
-          if (
-            typeof msg.password === "string" &&
-            (await window.electronAPI.verifyAccessPassword(msg.password))
-          ) {
-            console.log(
-              "[Signaling] Acesso não supervisionado autorizado por senha!",
-            );
-            acceptIncomingCall(fromId);
-            return;
-          }
-
-          setIncomingCall({
-            fromId,
-            fromName: msg.fromName || `Computador ${fromId}`,
-            expiresAt: Date.now() + 30000,
-          });
-          setCountdown(30);
-          break;
-        }
-
-        case "call-accepted": {
-          console.log(`[Signaling] Chamada aceita por: ${fromId}`);
-          if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
-          if (fromId) {
-            setRemoteId(fromId);
-            onCallEstablished?.(fromId);
-          }
-          setConnectionStatus("connected");
-          void window.electronAPI.toggleInputControl(true).catch(() => {});
-          setSessionRole("client");
-          setConnectionId(`conn-${Date.now()}`);
-          setView("session");
-          showToast({
-            type: "success",
-            title: "Solicitação aceita",
-            message: "Preparando a sessão remota…",
-          });
-          break;
-        }
-
-        case "call-rejected": {
-          console.log(`[Signaling] Chamada rejeitada: ${reason}`);
-          if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
-          setConnectionStatus("error");
-          const errText =
-            reason ||
-            "A solicitação de conexão foi recusada pelo computador remoto.";
-          setConnectionError(errText);
-          showAlert({
-            title: "Conexão Recusada",
-            message: errText,
-            type: "warning",
-            confirmText: "Entendido",
-          });
-          break;
-        }
-
-        case "peer-disconnected": {
-          console.log("[Signaling] O par foi desconectado.");
-          handleDisconnect(false);
-          showAlert({
-            title: "Sessão Finalizada",
-            message:
-              msg.message ||
-              "A conexão remota foi encerrada pelo outro computador.",
-            type: "info",
-            confirmText: "OK",
-          });
-          break;
-        }
-
-        case "error": {
-          console.warn("[Signaling] Erro recebido:", message);
-          if (callTimeoutRef.current) clearTimeout(callTimeoutRef.current);
-          setConnectionStatus("error");
-          const errText =
-            message || "Erro de comunicação no servidor de sinalização.";
-          setConnectionError(errText);
-          showAlert({
-            title: "Erro de Conexão",
-            message: errText,
-            type: "error",
-            confirmText: "Fechar",
-          });
-          break;
-        }
+      try {
+        const sources = await window.electronAPI.getDesktopSources();
+        const selected = sourceId
+          ? sources.find((s: any) => s.id === sourceId)
+          : sources.find(
+              (s: any) => s.id.startsWith("screen:") && s.isPrimary,
+            ) || sources.find((s: any) => s.id.startsWith("screen:"));
+        if (!selected)
+          throw Error("Escolha uma tela ou janela para compartilhar.");
+        const capture = await window.electronAPI.startDesktopStream(
+          selected.id,
+        );
+        if (!current.current || current.current.remoteId !== id) return;
+        setSourceKind(capture.kind);
+        sendWsMessage({
+          type: "call-accepted",
+          targetId: id,
+          permissions: {
+            ...chosen,
+            control: capture.kind === "screen" && chosen.control,
+          },
+          sourceKind: capture.kind,
+        });
+        setDiagnostic({ stage: "call", code: "CONFIRMING", state: "waiting" });
+      } catch {
+        setAnswering(false);
+        setConnectionError(
+          "Não foi possível preparar a captura. Escolha uma fonte disponível e tente novamente.",
+        );
       }
     },
-    [
-      onCallEstablished,
-      unattendedEnabled,
-      unattendedPassword,
-      acceptIncomingCall,
-      handleDisconnect,
-      showAlert,
-      showToast,
-    ],
+    [answering, sendWsMessage],
   );
-
-  // Timer do modal de chamada recebida (30 segundos)
+  const rejectIncomingCall = useCallback(
+    (id: string, reason?: string) => {
+      sendWsMessage({ type: "call-rejected", targetId: id });
+      finish("rejected", reason === "Tempo esgotado." ? "EXPIRED" : "REJECTED");
+      setConnectionStatus("idle");
+    },
+    [finish, sendWsMessage],
+  );
+  const handleDisconnect = useCallback(
+    (notify = true) => {
+      if (notify)
+        sendWsMessage({
+          type: "disconnect",
+          targetId: current.current?.remoteId,
+        });
+      finish("completed", "ENDED");
+      setConnectionStatus("idle");
+      setConnectionError(null);
+    },
+    [finish, sendWsMessage],
+  );
+  const requestDisconnect = useCallback(async () => {
+    if (
+      await showConfirm({
+        title: "Encerrar Sessão Remota",
+        message: "Deseja encerrar esta conexão?",
+        type: "warning",
+        destructive: true,
+        confirmText: "Encerrar Sessão",
+        cancelText: "Continuar Conectado",
+      })
+    )
+      handleDisconnect();
+  }, [showConfirm, handleDisconnect]);
+  const updatePermissions = useCallback(
+    async (next: SessionPermissions, kind = sourceKind) => {
+      if (sessionRole !== "host" || !current.current?.callId) return;
+      // Revoke locally immediately; granting still waits for server confirmation.
+      const restricted = {
+        control: permissions.control && next.control && kind === "screen",
+        clipboard: permissions.clipboard && next.clipboard,
+        files: permissions.files && next.files,
+      };
+      await window.electronAPI.confirmSession({
+        callId: current.current.callId,
+        role: "host",
+        permissions: restricted,
+      });
+      setPermissions(restricted);
+      setSourceKind(kind);
+      sendWsMessage({
+        type: "permissions-update",
+        targetId: current.current.remoteId,
+        permissions: next,
+        sourceKind: kind,
+      });
+    },
+    [sessionRole, permissions, sourceKind, sendWsMessage],
+  );
+  const handleCallSignalingMessage = useCallback(
+    async (msg: any) => {
+      if (msg.type === "call-ringing" && current.current) {
+        current.current.callId = msg.callId;
+        setConnectionStatus("ringing");
+        setDiagnostic({
+          stage: "call",
+          code: "AWAITING_CONSENT",
+          state: "waiting",
+        });
+        return;
+      }
+      if (msg.type === "incoming-call") {
+        if (current.current) return;
+        const c = begin(msg.fromId, "host");
+        c.callId = msg.callId;
+        setRemoteId(msg.fromId);
+        setIncomingCall({
+          fromId: msg.fromId,
+          fromName: msg.fromName || "Computador remoto",
+          expiresAt: Date.now() + 30000,
+        });
+        setCountdown(30);
+        if (
+          typeof msg.password === "string" &&
+          (await window.electronAPI.verifyAccessPassword(msg.password))
+        ) {
+          const settings = await window.electronAPI.getSecuritySettings();
+          await acceptIncomingCall(msg.fromId, settings.unattendedPermissions);
+        }
+        return;
+      }
+      if (msg.type === "call-accepted") {
+        const c = current.current;
+        if (
+          !c ||
+          c.callId !== msg.callId ||
+          c.role !== msg.role ||
+          !validPermissions(msg.permissions)
+        )
+          return;
+        if (timeout.current) clearTimeout(timeout.current);
+        await window.electronAPI.confirmSession({
+          callId: c.callId!,
+          role: c.role,
+          permissions: msg.permissions,
+        });
+        if (current.current !== c) return;
+        setPermissions(msg.permissions);
+        setSourceKind(msg.sourceKind);
+        setSessionRole(c.role);
+        setRemoteId(c.remoteId);
+        setConnectionId(c.callId!);
+        setIncomingCall(null);
+        setAnswering(false);
+        c.entry = {
+          ...c.entry,
+          callId: c.callId,
+          result: "active",
+          acceptedAt: new Date().toISOString(),
+        };
+        persist(c.entry);
+        onCallEstablished?.(c.remoteId);
+        setView("session");
+        setConnectionStatus("connected");
+        setDiagnostic({
+          stage: "capture",
+          code: "PREPARING_MEDIA",
+          state: "waiting",
+        });
+        if (c.role === "host")
+          await window.electronAPI.toggleInputControl(msg.permissions.control);
+        return;
+      }
+      if (
+        msg.type === "permissions-updated" &&
+        current.current &&
+        current.current.callId === msg.callId &&
+        validPermissions(msg.permissions)
+      ) {
+        const active = current.current;
+        await window.electronAPI.confirmSession({
+          callId: msg.callId,
+          role: active.role,
+          permissions: msg.permissions,
+        });
+        setPermissions(msg.permissions);
+        setSourceKind(msg.sourceKind);
+        if (active.role === "host")
+          await window.electronAPI.toggleInputControl(msg.permissions.control);
+        return;
+      }
+      if (msg.type === "call-rejected") {
+        finish("rejected", "REJECTED");
+        setConnectionError(
+          "A solicitação foi recusada pelo computador remoto.",
+        );
+        setConnectionStatus("error");
+        return;
+      }
+      if (msg.type === "peer-disconnected") {
+        const wasActive = current.current?.entry.result === "active";
+        finish(
+          wasActive ? "completed" : "failed",
+          msg.code === "SANCTIONED"
+            ? "SANCTIONED"
+            : msg.code === "EXPIRED"
+              ? "EXPIRED"
+              : "DISCONNECTED",
+        );
+        setConnectionStatus("idle");
+        if (!wasActive)
+          setConnectionError(
+            msg.code === "EXPIRED"
+              ? "O computador remoto não respondeu a tempo."
+              : "A conexão foi encerrada.",
+          );
+        return;
+      }
+      if (msg.type === "error" && current.current) {
+        const code = /^[A-Z_]{1,50}$/.test(msg.code)
+          ? msg.code
+          : "SERVER_ERROR";
+        finish("failed", code);
+        setConnectionStatus("error");
+        setDiagnostic({ stage: "call", code, state: "failed" });
+        setConnectionError(
+          msg.message || "Não foi possível iniciar a conexão.",
+        );
+      }
+    },
+    [begin, acceptIncomingCall, persist, onCallEstablished, finish],
+  );
   useEffect(() => {
     if (!incomingCall) return;
-
-    const interval = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          clearInterval(interval);
-          rejectIncomingCall(incomingCall.fromId, "Tempo esgotado.");
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(interval);
+    const timer = setInterval(() => {
+      const seconds = Math.max(
+        0,
+        Math.ceil((incomingCall.expiresAt - Date.now()) / 1000),
+      );
+      setCountdown(seconds);
+      if (seconds === 0)
+        rejectIncomingCall(incomingCall.fromId, "Tempo esgotado.");
+    }, 500);
+    return () => clearInterval(timer);
   }, [incomingCall, rejectIncomingCall]);
-
+  useEffect(
+    () => () => {
+      if (timeout.current) clearTimeout(timeout.current);
+      void window.electronAPI.confirmSession(null).catch(() => {});
+    },
+    [],
+  );
   const resetUnattendedSettings = useCallback(() => {
-    localStorage.removeItem("coffee_unattended_enabled");
     void window.electronAPI.resetSecurityPreferences();
-    localStorage.removeItem("coffee_unattended_password");
     setUnattendedEnabled(false);
     setUnattendedPassword("");
+    setUnattendedPermissions({ ...VIEW_ONLY });
   }, []);
-
   return {
     view,
     setView,
@@ -370,12 +455,19 @@ export function useCallManager({
     connectionError,
     incomingCall,
     countdown,
+    answering,
+    permissions,
+    sourceKind,
+    diagnostic,
+    updatePermissions,
     unattendedEnabled,
     setUnattendedEnabled,
     unattendedPassword,
     setUnattendedPassword,
+    unattendedPermissions,
+    setUnattendedPermissions,
     handleConnectWithId,
-    handleConnect,
+    handleConnect: () => handleConnectWithId(remoteId),
     handleCancelCall,
     acceptIncomingCall,
     rejectIncomingCall,

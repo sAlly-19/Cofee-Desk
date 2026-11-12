@@ -1,3 +1,5 @@
+import { PermissionsFields } from "../session/PermissionsFields";
+import type { SessionPermissions } from "../../../shared/session";
 import { useEffect, useRef, useState } from "react";
 import { Settings, Trash2, KeyRound } from "lucide-react";
 import { Modal } from "../ui/Modal";
@@ -12,6 +14,9 @@ interface SettingsModalProps {
   setUnattendedPassword: (password: string) => void;
   onResetIdentity: () => void;
   onSave: () => void;
+  unattendedPermissions: SessionPermissions;
+  setUnattendedPermissions: (p: SessionPermissions) => void;
+  onCheckUpdates: () => void;
 }
 
 export function SettingsModal({
@@ -24,6 +29,9 @@ export function SettingsModal({
   setUnattendedPassword,
   onResetIdentity,
   onSave,
+  unattendedPermissions,
+  setUnattendedPermissions,
+  onCheckUpdates,
 }: SettingsModalProps): JSX.Element | null {
   const [saveError, setSaveError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -81,6 +89,7 @@ export function SettingsModal({
                 await window.electronAPI.setAccessPassword(
                   unattendedPassword,
                   unattendedEnabled,
+                  unattendedPermissions,
                 );
                 setUnattendedPassword("");
                 onSave();
@@ -123,6 +132,9 @@ export function SettingsModal({
             {saveError}
           </div>
         )}
+        <button className="secondary-button" onClick={onCheckUpdates}>
+          Verificar atualizações
+        </button>
         {/* Opção: Acesso Não Supervisionado */}
         <div
           style={{
@@ -173,6 +185,14 @@ export function SettingsModal({
             tela.
           </p>
 
+          <p className="settings-hint">
+            Confira os recursos permitidos ao acesso por senha. Configurações
+            anteriores preservam as permissões que já estavam habilitadas.
+          </p>
+          <PermissionsFields
+            value={unattendedPermissions}
+            onChange={setUnattendedPermissions}
+          />
           {(unattendedEnabled || focusPassword) && (
             <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
               <input

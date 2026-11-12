@@ -1,3 +1,5 @@
+import {matchesDevice} from "../../../shared/history";
+import { useState } from "react";
 import type { RefObject } from "react";
 import {
   Monitor,
@@ -21,6 +23,8 @@ export function RecentSessionsCard({
   onOpenOptions,
   onViewAll,
 }: RecentSessionsCardProps) {
+  const [query, setQuery] = useState("");
+  const filtered=recentSessions.filter(s=>matchesDevice(s,query));
   return (
     <section
       className="recent-sessions"
@@ -36,6 +40,18 @@ export function RecentSessionsCard({
           Ver histórico <ArrowRight size={22} />
         </button>
       </header>
+      {recentSessions.length > 0 && (
+        <input
+          className="device-search"
+          aria-label="Buscar dispositivos recentes"
+          placeholder="Buscar por nome ou ID"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      )}
+      {recentSessions.length > 0 && filtered.length === 0 && (
+        <p role="status">Nenhum dispositivo encontrado.</p>
+      )}
       <div className="recent-list">
         {recentSessions.length === 0 ? (
           <div className="recent-empty">
@@ -48,7 +64,7 @@ export function RecentSessionsCard({
             </div>
           </div>
         ) : (
-          recentSessions.slice(0, 5).map((session) => (
+          filtered.slice(0, 5).map((session) => (
             <div className="recent-row" key={session.id}>
               <span className="device-icon">
                 <Monitor size={25} strokeWidth={1.6} />

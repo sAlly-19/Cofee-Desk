@@ -31,9 +31,7 @@
     {
       "from": "dist-electron/main/native",
       "to": "native",
-      "filter": [
-        "CoffeeInput.exe"
-      ]
+      "filter": ["CoffeeInput.exe", "CoffeeInput-v2.exe"]
     }
   ],
   "nsis": {
@@ -42,5 +40,10 @@
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
     "shortcutName": "Coffee Desk"
+  },
+  "publish": {
+    "provider": "github",
+    "owner": "sAlly-19",
+    "repo": "Cofee-Desk"
   }
 }

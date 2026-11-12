@@ -90,6 +90,15 @@ async function run() {
     registerDeviceSecurity,
   } = require("../dist-electron/main/deviceSecurity");
   registerDeviceSecurity();
+  require(
+    path.join(root, "dist-electron/main/sessionAuthority"),
+  ).registerSessionAuthority();
+  require(
+    path.join(root, "dist-electron/main/historyManager"),
+  ).registerHistoryHandlers();
+  require(
+    path.join(root, "dist-electron/main/screenManager"),
+  ).registerScreenIpcHandlers();
   require("../dist-electron/main/inputManager").registerInputIpcHandlers();
   require("../dist-electron/main/ipcHandlers").registerIpcHandlers();
   const settingsPath = path.join(

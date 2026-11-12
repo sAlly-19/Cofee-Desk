@@ -1,5 +1,7 @@
-import { ipcMain, BrowserWindow } from 'electron';
-import { IPC_CHANNELS } from '../shared/ipcChannels';
+import { assertTrusted } from "./ipcSecurity";
+import { hasPermission, nativeSession } from "./sessionAuthority";
+import { ipcMain, BrowserWindow } from "electron";
+import { IPC_CHANNELS } from "../shared/ipcChannels";
 import type {
   ConnectionState,
   MouseEventData,
@@ -7,10 +9,10 @@ import type {
   FileTransferMetadata,
   FileTransferChunk,
   ClipboardData,
-} from '../shared/types';
-import { store } from './store';
-import { updateConnectionState, removeConnection } from './connectionManager';
-import { getSessionWindow } from './windowManager';
+} from "../shared/types";
+import { store } from "./store";
+import { updateConnectionState, removeConnection } from "./connectionManager";
+import { getSessionWindow } from "./windowManager";
 
 // Tipos internos para WebRTC
 interface WebRTCSession {
@@ -24,14 +26,17 @@ interface WebRTCSession {
   signalingWs: WebSocket | null;
   isConnected: boolean;
   iceCandidates: RTCIceCandidate[];
-  fileTransfers: Map<string, {
-    fileId: string;
-    fileName: string;
-    fileSize: number;
-    receivedChunks: number;
-    totalChunks: number;
-    chunks: Buffer[];
-  }>;
+  fileTransfers: Map<
+    string,
+    {
+      fileId: string;
+      fileName: string;
+      fileSize: number;
+      receivedChunks: number;
+      totalChunks: number;
+      chunks: Buffer[];
+    }
+  >;
 }
 
 // Armazenamento de sessões WebRTC ativas
@@ -39,14 +44,14 @@ const webrtcSessions = new Map<string, WebRTCSession>();
 
 // Configuração ICE servers (STUN público para testes locais)
 const ICE_SERVERS: RTCIceServer[] = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
 ];
 
 function getOrCreateSession(
   connectionId: string,
   remoteId: string,
-  localId: string
+  localId: string,
 ): WebRTCSession {
   let session = webrtcSessions.get(connectionId);
   if (!session) {
@@ -76,7 +81,7 @@ function createPeerConnection(session: WebRTCSession): RTCPeerConnection {
     if (event.candidate && session.signalingWs) {
       session.signalingWs.send(
         JSON.stringify({
-          type: 'ice-candidate',
+          type: "ice-candidate",
           fromId: session.localId,
           targetId: session.remoteId,
           payload: {
@@ -86,7 +91,7 @@ function createPeerConnection(session: WebRTCSession): RTCPeerConnection {
             usernameFragment: event.candidate.usernameFragment,
           },
           timestamp: new Date().toISOString(),
-        })
+        }),
       );
     }
   };
@@ -94,7 +99,7 @@ function createPeerConnection(session: WebRTCSession): RTCPeerConnection {
   // Trata track remoto (stream de tela do peer)
   pc.ontrack = (event) => {
     console.log(`[WebRTC] Track remoto recebido: ${event.track.kind}`);
-    if (event.track.kind === 'video') {
+    if (event.track.kind === "video") {
       session.remoteStream = event.streams[0] ?? null;
       // Notificar renderer via IPC
       const win = BrowserWindow.getFocusedWindow() ?? getSessionWindow();
@@ -111,9 +116,13 @@ function createPeerConnection(session: WebRTCSession): RTCPeerConnection {
 
   // Estado de conexão
   pc.onconnectionstatechange = () => {
-    console.log(`[WebRTC] Estado da conexão ${session.connectionId}: ${pc.connectionState}`);
-    session.isConnected = pc.connectionState === 'connected';
-    updateConnectionState(session.connectionId, { isConnected: session.isConnected });
+    console.log(
+      `[WebRTC] Estado da conexão ${session.connectionId}: ${pc.connectionState}`,
+    );
+    session.isConnected = pc.connectionState === "connected";
+    updateConnectionState(session.connectionId, {
+      isConnected: session.isConnected,
+    });
   };
 
   return pc;
@@ -124,18 +133,22 @@ function createPeerConnection(session: WebRTCSession): RTCPeerConnection {
  */
 export async function createOffer(
   connectionId: string,
-  sourceId: string
+  sourceId: string,
 ): Promise<{ sdp: string; type: string }> {
-  const session = getOrCreateSession(connectionId, '', store.get('coffeeDeskId.id') as string);
-  const localId = store.get('coffeeDeskId.id') as string;
-  session.remoteId = ''; // será preenchido quando o remoto responder
+  const session = getOrCreateSession(
+    connectionId,
+    "",
+    store.get("coffeeDeskId.id") as string,
+  );
+  const localId = store.get("coffeeDeskId.id") as string;
+  session.remoteId = ""; // será preenchido quando o remoto responder
   session.localId = localId;
 
   const pc = createPeerConnection(session);
   session.pc = pc;
 
   // Cria data channel para arquivos e clipboard
-  const dc = pc.createDataChannel('coffee-desk-data', {
+  const dc = pc.createDataChannel("coffee-desk-data", {
     negotiated: false,
     id: 0,
   });
@@ -150,7 +163,7 @@ export async function createOffer(
       session.screenStream = stream;
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
     } catch (err) {
-      console.error('[WebRTC] Erro ao capturar tela:', err);
+      console.error("[WebRTC] Erro ao capturar tela:", err);
     }
   }
 
@@ -161,7 +174,7 @@ export async function createOffer(
   await pc.setLocalDescription(offer);
 
   return {
-    sdp: offer.sdp ?? '',
+    sdp: offer.sdp ?? "",
     type: offer.type,
   };
 }
@@ -172,7 +185,7 @@ export async function createOffer(
 export async function setRemoteDescription(
   connectionId: string,
   sdp: string,
-  type: 'offer' | 'answer'
+  type: "offer" | "answer",
 ): Promise<void> {
   const session = webrtcSessions.get(connectionId);
   if (!session?.pc) {
@@ -185,14 +198,14 @@ export async function setRemoteDescription(
   });
 
   // Se recebemos uma oferta, criamos resposta
-  if (type === 'offer') {
+  if (type === "offer") {
     const answer = await session.pc.createAnswer();
     await session.pc.setLocalDescription(answer);
 
     if (session.signalingWs) {
       session.signalingWs.send(
         JSON.stringify({
-          type: 'answer',
+          type: "answer",
           fromId: session.localId,
           targetId: session.remoteId,
           payload: {
@@ -200,7 +213,7 @@ export async function setRemoteDescription(
             type: answer.type,
           },
           timestamp: new Date().toISOString(),
-        })
+        }),
       );
     }
   }
@@ -216,7 +229,7 @@ export async function addIceCandidate(
     sdpMid: string | null;
     sdpMLineIndex: number | null;
     usernameFragment: string | null;
-  }
+  },
 ): Promise<void> {
   const session = webrtcSessions.get(connectionId);
   if (!session?.pc) return;
@@ -229,7 +242,7 @@ export async function addIceCandidate(
       usernameFragment: candidate.usernameFragment,
     });
   } catch (err) {
-    console.error('[WebRTC] Erro ao adicionar candidato ICE:', err);
+    console.error("[WebRTC] Erro ao adicionar candidato ICE:", err);
   }
 }
 
@@ -238,10 +251,10 @@ export async function addIceCandidate(
  */
 export function sendDataChannelMessage(
   connectionId: string,
-  message: unknown
+  message: unknown,
 ): boolean {
   const session = webrtcSessions.get(connectionId);
-  if (!session?.dataChannel || session.dataChannel.readyState !== 'open') {
+  if (!session?.dataChannel || session.dataChannel.readyState !== "open") {
     return false;
   }
 
@@ -249,7 +262,7 @@ export function sendDataChannelMessage(
     session.dataChannel.send(JSON.stringify(message));
     return true;
   } catch (err) {
-    console.error('[WebRTC] Erro ao enviar mensagem:', err);
+    console.error("[WebRTC] Erro ao enviar mensagem:", err);
     return false;
   }
 }
@@ -274,43 +287,69 @@ function setupDataChannel(session: WebRTCSession, dc: RTCDataChannel): void {
       const message = JSON.parse(event.data as string);
       handleDataChannelMessage(session, message);
     } catch (err) {
-      console.error('[WebRTC] Erro ao parsear mensagem do data channel:', err);
+      console.error("[WebRTC] Erro ao parsear mensagem do data channel:", err);
     }
   };
 
   dc.onerror = (err) => {
-    console.error('[WebRTC] Erro no data channel:', err);
+    console.error("[WebRTC] Erro no data channel:", err);
   };
 }
 
 /**
  * Processa mensagens recebidas pelo data channel.
  */
-function handleDataChannelMessage(session: WebRTCSession, message: unknown): void {
+function handleDataChannelMessage(
+  session: WebRTCSession,
+  message: unknown,
+): void {
+  const owner = BrowserWindow.getFocusedWindow() ?? getSessionWindow();
+  if (
+    !owner ||
+    nativeSession(owner.webContents.id)?.callId !== session.connectionId
+  )
+    return;
+  const candidate = message as { type?: string };
+  if (
+    candidate.type === "clipboard" &&
+    !hasPermission(owner.webContents.id, "clipboard")
+  )
+    return;
+  if (
+    candidate.type?.startsWith("file-") &&
+    !hasPermission(owner.webContents.id, "files")
+  )
+    return;
   const msg = message as { type: string; [key: string]: unknown };
 
   switch (msg.type) {
-    case 'clipboard':
+    case "clipboard": {
       // Encaminhar para renderer via IPC
       const win = BrowserWindow.getFocusedWindow() ?? getSessionWindow();
       if (win) {
         win.webContents.send(IPC_CHANNELS.CLIPBOARD_CHANGED, msg.payload);
       }
       break;
-
-    case 'file-metadata':
-      handleFileMetadata(session, msg as unknown as FileTransferMetadata & { type: string });
+    }
+    case "file-metadata":
+      handleFileMetadata(
+        session,
+        msg as unknown as FileTransferMetadata & { type: string },
+      );
       break;
 
-    case 'file-chunk':
-      handleFileChunk(session, msg as unknown as FileTransferChunk & { type: string });
+    case "file-chunk":
+      handleFileChunk(
+        session,
+        msg as unknown as FileTransferChunk & { type: string },
+      );
       break;
 
-    case 'mouse':
+    case "mouse":
       // Eventos de mouse remoto (se o remoto estiver controlando)
       break;
 
-    case 'keyboard':
+    case "keyboard":
       // Eventos de teclado remoto
       break;
 
@@ -324,7 +363,7 @@ function handleDataChannelMessage(session: WebRTCSession, message: unknown): voi
  */
 function handleFileMetadata(
   session: WebRTCSession,
-  metadata: FileTransferMetadata & { type: string }
+  metadata: FileTransferMetadata & { type: string },
 ): void {
   session.fileTransfers.set(metadata.fileId, {
     fileId: metadata.fileId,
@@ -343,7 +382,7 @@ function handleFileMetadata(
         fileId: metadata.fileId,
         fileName: metadata.fileName,
         fileSize: metadata.fileSize,
-        status: 'receiving',
+        status: "receiving",
       },
     ]);
   }
@@ -354,7 +393,7 @@ function handleFileMetadata(
  */
 function handleFileChunk(
   session: WebRTCSession,
-  chunk: FileTransferChunk & { type: string }
+  chunk: FileTransferChunk & { type: string },
 ): void {
   const transfer = session.fileTransfers.get(chunk.fileId);
   if (!transfer) return;
@@ -365,7 +404,9 @@ function handleFileChunk(
   // Notificar progresso
   const win = BrowserWindow.getFocusedWindow() ?? getSessionWindow();
   if (win) {
-    const percent = Math.round((transfer.receivedChunks / transfer.totalChunks) * 100);
+    const percent = Math.round(
+      (transfer.receivedChunks / transfer.totalChunks) * 100,
+    );
     win.webContents.send(IPC_CHANNELS.FILE_TRANSFER_PROGRESS, {
       fileId: chunk.fileId,
       percent,
@@ -375,9 +416,9 @@ function handleFileChunk(
   // Se último chunk, montar arquivo e salvar
   if (chunk.isLast || transfer.receivedChunks >= transfer.totalChunks) {
     const buffer = Buffer.concat(transfer.chunks);
-    const fs = require('fs');
-    const path = require('path');
-    const downloadsPath = require('electron').app.getPath('downloads');
+    const fs = require("fs");
+    const path = require("path");
+    const downloadsPath = require("electron").app.getPath("downloads");
     const filePath = path.join(downloadsPath, transfer.fileName);
 
     fs.writeFileSync(filePath, buffer);
@@ -396,18 +437,18 @@ function handleFileChunk(
  */
 export async function sendFile(
   connectionId: string,
-  filePath: string
+  filePath: string,
 ): Promise<{ success: boolean; fileId?: string; error?: string }> {
   const session = webrtcSessions.get(connectionId);
-  if (!session?.dataChannel || session.dataChannel.readyState !== 'open') {
-    return { success: false, error: 'Data channel não disponível' };
+  if (!session?.dataChannel || session.dataChannel.readyState !== "open") {
+    return { success: false, error: "Data channel não disponível" };
   }
 
-  const fs = require('fs');
-  const path = require('path');
+  const fs = require("fs");
+  const path = require("path");
 
   if (!fs.existsSync(filePath)) {
-    return { success: false, error: 'Arquivo não encontrado' };
+    return { success: false, error: "Arquivo não encontrado" };
   }
 
   const fileName = path.basename(filePath);
@@ -420,12 +461,12 @@ export async function sendFile(
 
   // Enviar metadados
   const metadata = {
-    type: 'file-metadata',
+    type: "file-metadata",
     connectionId: session.connectionId,
     fileId,
     fileName,
     fileSize,
-    mimeType: 'application/octet-stream',
+    mimeType: "application/octet-stream",
     totalChunks,
   };
   session.dataChannel.send(JSON.stringify(metadata));
@@ -433,11 +474,11 @@ export async function sendFile(
   let chunkIndex = 0;
   for await (const chunk of fileStream) {
     const chunkMsg = {
-      type: 'file-chunk',
+      type: "file-chunk",
       connectionId: session.connectionId,
       fileId,
       chunkIndex,
-      data: Buffer.from(chunk).toString('base64'),
+      data: Buffer.from(chunk).toString("base64"),
       isLast: chunkIndex === totalChunks - 1,
     };
     session.dataChannel.send(JSON.stringify(chunkMsg));
@@ -454,10 +495,10 @@ export async function sendFile(
  */
 export function sendClipboardData(
   connectionId: string,
-  data: ClipboardData
+  data: ClipboardData,
 ): boolean {
   return sendDataChannelMessage(connectionId, {
-    type: 'clipboard',
+    type: "clipboard",
     connectionId,
     payload: data,
     timestamp: new Date().toISOString(),
@@ -469,10 +510,10 @@ export function sendClipboardData(
  */
 export function sendMouseEvent(
   connectionId: string,
-  data: MouseEventData
+  data: MouseEventData,
 ): boolean {
   return sendDataChannelMessage(connectionId, {
-    type: 'mouse',
+    type: "mouse",
     connectionId,
     payload: data,
     timestamp: new Date().toISOString(),
@@ -484,10 +525,10 @@ export function sendMouseEvent(
  */
 export function sendKeyboardEvent(
   connectionId: string,
-  data: KeyboardEventData
+  data: KeyboardEventData,
 ): boolean {
   return sendDataChannelMessage(connectionId, {
-    type: 'keyboard',
+    type: "keyboard",
     connectionId,
     payload: data,
     timestamp: new Date().toISOString(),
@@ -529,7 +570,9 @@ export function closeSession(connectionId: string): void {
 /**
  * Retorna a sessão WebRTC por connectionId.
  */
-export function getWebRTCHession(connectionId: string): WebRTCSession | undefined {
+export function getWebRTCHession(
+  connectionId: string,
+): WebRTCSession | undefined {
   return webrtcSessions.get(connectionId);
 }
 
@@ -537,10 +580,14 @@ export function getWebRTCHession(connectionId: string): WebRTCSession | undefine
  * Simulação de navigator.mediaDevices.getDisplayMedia para Electron (processo Main não tem acesso direto).
  * No renderer, isso será chamado via desktopCapturer + getDisplayMedia.
  */
-async function navigatorMediaDevicesGetDisplayMedia(_sourceId: string): Promise<MediaStream> {
+async function navigatorMediaDevicesGetDisplayMedia(
+  _sourceId: string,
+): Promise<MediaStream> {
   // Esta função é um placeholder — a captura real acontece no renderer via IPC
   // e o stream é repassado para o Main através de uma API bridge
-  throw new Error('Captura de tela deve ser iniciada pelo renderer via getDisplayMedia');
+  throw new Error(
+    "Captura de tela deve ser iniciada pelo renderer via getDisplayMedia",
+  );
 }
 
 /**
@@ -550,14 +597,38 @@ export function registerWebRTCElectronHandlers(): void {
   // Enviar arquivo
   ipcMain.handle(
     IPC_CHANNELS.FILE_TRANSFER_REQUEST,
-    async (_event, { connectionId, filePath }: { connectionId: string; filePath: string }) => {
+    async (
+      event,
+      { connectionId, filePath }: { connectionId: string; filePath: string },
+    ) => {
+      assertTrusted(event);
+      if (
+        !hasPermission(event.sender.id, "files") ||
+        nativeSession(event.sender.id)?.callId !== connectionId
+      )
+        return { success: false, error: "Transferência não autorizada" };
       return await sendFile(connectionId, filePath);
-    }
+    },
   );
 
   // Clipboard
-  ipcMain.on(IPC_CHANNELS.CLIPBOARD_SET, (_event, { connectionId, data }: { connectionId: string; data: ClipboardData }) => {
-    sendClipboardData(connectionId, data);
-  });
-
+  ipcMain.on(
+    IPC_CHANNELS.CLIPBOARD_SET,
+    (
+      event,
+      { connectionId, data }: { connectionId: string; data: ClipboardData },
+    ) => {
+      try {
+        assertTrusted(event);
+      } catch {
+        return;
+      }
+      if (
+        !hasPermission(event.sender.id, "clipboard") ||
+        nativeSession(event.sender.id)?.callId !== connectionId
+      )
+        return;
+      sendClipboardData(connectionId, data);
+    },
+  );
 }

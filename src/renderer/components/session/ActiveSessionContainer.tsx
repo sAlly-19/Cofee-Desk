@@ -1,4 +1,8 @@
-import { useState } from "react";
+import type { SessionPermissions } from "../../../shared/session";
+import { SourcePicker } from "./SourcePicker";
+import { PermissionsFields } from "./PermissionsFields";
+import { Modal } from "../ui/Modal";
+import { useState, useEffect } from "react";
 import { X, ClipboardList, FolderSync } from "lucide-react";
 import { RemoteStreamView } from "../RemoteStreamView";
 import { ClipboardSync } from "../ClipboardSync";
@@ -8,6 +12,12 @@ import type { SessionRole } from "../../types/app";
 
 interface ActiveSessionContainerProps {
   connectionId: string;
+  permissions: SessionPermissions;
+  sourceKind: "screen" | "window";
+  onUpdatePermissions: (
+    p: SessionPermissions,
+    kind?: "screen" | "window",
+  ) => Promise<void>;
   remoteId: string;
   role: SessionRole;
   onRemoteInput: (input: any) => void;
@@ -21,6 +31,9 @@ interface ActiveSessionContainerProps {
 
 export function ActiveSessionContainer({
   connectionId,
+  permissions,
+  sourceKind,
+  onUpdatePermissions,
   remoteId,
   role,
   onRemoteInput,
@@ -28,6 +41,10 @@ export function ActiveSessionContainer({
   onReport,
   onRequestDisconnect,
 }: ActiveSessionContainerProps): JSX.Element {
+  const [showAccess, setShowAccess] = useState(false),
+    [source, setSource] = useState("");
+  const [newKind, setNewKind] = useState<"screen" | "window">(sourceKind);
+  const [sourceError, setSourceError] = useState("");
   const [activeDrawer, setActiveDrawer] = useState<
     "clipboard" | "files" | null
   >(null);
@@ -43,9 +60,13 @@ export function ActiveSessionContainer({
     cancelTransfer,
     removeTransfer,
     clearCompleted,
-  } = useFileTransfer(filesDataChannel);
+  } = useFileTransfer(filesDataChannel, permissions.files);
 
+  useEffect(() => {
+    if (activeDrawer && !permissions[activeDrawer]) setActiveDrawer(null);
+  }, [permissions, activeDrawer]);
   const toggleDrawer = (tab: "clipboard" | "files") => {
+    if (!permissions[tab]) return;
     setActiveDrawer((prev) => (prev === tab ? null : tab));
   };
 
@@ -61,6 +82,58 @@ export function ActiveSessionContainer({
         backgroundColor: "#040201",
       }}
     >
+      {role === "host" && (
+        <button
+          className="session-access-button secondary-button"
+          onClick={() => setShowAccess(true)}
+        >
+          Tela e permissões
+        </button>
+      )}
+      <Modal
+        isOpen={showAccess}
+        onClose={() => setShowAccess(false)}
+        title="Tela e permissões"
+        subtitle="Você pode revogar recursos a qualquer momento."
+      >
+        <PermissionsFields
+          value={permissions}
+          windowOnly={sourceKind === "window"}
+          onChange={(p) => void onUpdatePermissions(p)}
+        />
+        <SourcePicker
+          value={source}
+          onChange={(id, kind) => {
+            setSource(id);
+            setNewKind(kind);
+          }}
+        />
+        {sourceError && <p role="alert">{sourceError}</p>}
+        <button
+          className="primary-button"
+          disabled={!source}
+          onClick={async () => {
+            try {
+              await window.electronAPI.startDesktopStream(source);
+              await onUpdatePermissions(
+                {
+                  ...permissions,
+                  control: newKind === "screen" && permissions.control,
+                },
+                newKind,
+              );
+              window.dispatchEvent(new Event("capture-source-changed"));
+              setShowAccess(false);
+            } catch {
+              setSourceError(
+                "Não foi possível trocar a fonte. Atualize a lista e tente novamente.",
+              );
+            }
+          }}
+        >
+          Compartilhar fonte selecionada
+        </button>
+      </Modal>
       {/* 100% Immersive Remote Stream Viewport */}
       <div
         style={{
@@ -73,6 +146,7 @@ export function ActiveSessionContainer({
       >
         <RemoteStreamView
           connectionId={connectionId}
+          permissions={permissions}
           remoteId={remoteId}
           isConnected={true}
           role={role}
@@ -124,6 +198,7 @@ export function ActiveSessionContainer({
               style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
             >
               <button
+                disabled={!permissions.clipboard}
                 onClick={() => setActiveDrawer("clipboard")}
                 className="cd-btn-tactile"
                 style={{
@@ -151,6 +226,7 @@ export function ActiveSessionContainer({
               </button>
 
               <button
+                disabled={!permissions.files}
                 onClick={() => setActiveDrawer("files")}
                 className="cd-btn-tactile"
                 style={{
@@ -227,7 +303,12 @@ export function ActiveSessionContainer({
             }}
           >
             {activeDrawer === "clipboard" ? (
-              <ClipboardSync connectionId={connectionId} isConnected={true} />
+              <ClipboardSync
+                connectionId={connectionId}
+                isConnected={true}
+                dataChannel={filesDataChannel}
+                allowed={permissions.clipboard}
+              />
             ) : (
               <FileTransfer
                 connectionId={connectionId}

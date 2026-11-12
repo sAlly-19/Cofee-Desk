@@ -1,208 +1,138 @@
-import { useState, useEffect, useCallback } from 'react';
-import { ElectronAPI } from '@main/preload';
-import type { ClipboardData } from '@shared/types';
-import { Button } from './ui/Button';
-import { Toggle } from './ui/Toggle';
-import { Card } from './ui/Card';
-import { Badge } from './ui/Badge';
-
-declare global {
-  interface Window {
-    electronAPI: ElectronAPI;
-  }
-}
-
-interface Props {
+import { useState, useEffect, useRef } from "react";
+export function ClipboardSync({
+  isConnected,
+  dataChannel,
+  allowed,
+}: {
   connectionId: string;
   isConnected: boolean;
-}
-
-export function ClipboardSync({ connectionId, isConnected }: Props) {
-  const [localClipboard, setLocalClipboard] = useState<string>('');
-  const [remoteClipboard, setRemoteClipboard] = useState<string | null>(null);
-  const [syncEnabled, setSyncEnabled] = useState(true);
-  const [lastSync, setLastSync] = useState<string | null>(null);
-
-  // Escuta mudanças de clipboard remoto
+  dataChannel: RTCDataChannel | null;
+  allowed: boolean;
+}) {
+  const [local, setLocal] = useState(""),
+    [remote, setRemote] = useState(""),
+    [automatic, setAutomatic] = useState(true),
+    [error, setError] = useState("");
+  const enabled = useRef(false),
+    auto = useRef(true),
+    last = useRef("");
+  enabled.current = allowed && isConnected;
+  auto.current = automatic;
   useEffect(() => {
-    if (!window.electronAPI || !isConnected) return;
-
-    window.electronAPI.onClipboardChanged((data: ClipboardData) => {
-      if (data.type === 'text' && data.content) {
-        setRemoteClipboard(data.content);
-        setLastSync(new Date().toLocaleTimeString());
+    if (!dataChannel || !allowed || !isConnected) return;
+    const receive = (event: MessageEvent) => {
+      if (
+        !enabled.current ||
+        typeof event.data !== "string" ||
+        event.data.length > 70000
+      )
+        return;
+      try {
+        const m = JSON.parse(event.data);
+        if (
+          m.type !== "clipboard-text" ||
+          typeof m.text !== "string" ||
+          m.text.length > 65536
+        )
+          return;
+        setRemote(m.text);
+        last.current = m.text;
+        if (auto.current)
+          void window.electronAPI
+            .applySessionClipboard(m.text)
+            .catch(() => setError("Não foi possível aplicar o clipboard."));
+      } catch {
+        /* Ignore unrelated/malformed channel messages. */
       }
-    });
-  }, [isConnected, connectionId]);
-
-  const handleCopyLocal = useCallback(async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      setLocalClipboard(text);
-    } catch {
-      // Permissão negada ou clipboard vazio
-    }
-  }, []);
-
-  const handleSendToRemote = useCallback(async () => {
-    if (!window.electronAPI || !syncEnabled || !localClipboard) return;
-
-    try {
-      await window.electronAPI.setClipboard({
-        type: 'text',
-        content: localClipboard,
-      });
-      setLastSync(new Date().toLocaleTimeString());
-    } catch (err) {
-      console.error('Erro ao enviar clipboard:', err);
-    }
-  }, [localClipboard, syncEnabled, connectionId, window.electronAPI]);
-
-  const handleApplyRemote = useCallback(() => {
-    if (remoteClipboard) {
-      navigator.clipboard.writeText(remoteClipboard);
-      setLocalClipboard(remoteClipboard);
-    }
-  }, [remoteClipboard]);
-
+    };
+    dataChannel.addEventListener("message", receive);
+    const timer = setInterval(() => {
+      if (
+        !enabled.current ||
+        !auto.current ||
+        dataChannel.readyState !== "open"
+      )
+        return;
+      void window.electronAPI
+        .readSessionClipboard()
+        .then((text) => {
+          if (
+            !enabled.current ||
+            !auto.current ||
+            text === last.current ||
+            dataChannel.readyState !== "open"
+          )
+            return;
+          last.current = text;
+          setLocal(text);
+          dataChannel.send(JSON.stringify({ type: "clipboard-text", text }));
+        })
+        .catch(() => {});
+    }, 1500);
+    return () => {
+      clearInterval(timer);
+      dataChannel.removeEventListener("message", receive);
+    };
+  }, [dataChannel, allowed, isConnected]);
+  if (!allowed) return <p>O anfitrião desativou o clipboard nesta sessão.</p>;
   return (
-    <Card>
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '1rem',
+    <section className="clipboard-panel">
+      <h3>Clipboard compartilhado</h3>
+      <label>
+        <input
+          type="checkbox"
+          checked={automatic}
+          onChange={(e) => setAutomatic(e.target.checked)}
+        />{" "}
+        Sincronizar automaticamente
+      </label>
+      {error && <p role="alert">{error}</p>}
+      <label>
+        Meu clipboard
+        <textarea
+          aria-label="Meu clipboard"
+          value={local}
+          maxLength={65536}
+          onChange={(e) => setLocal(e.target.value)}
+        />
+      </label>
+      <button
+        className="secondary-button"
+        onClick={() =>
+          void window.electronAPI
+            .readSessionClipboard()
+            .then(setLocal)
+            .catch(() => setError("Não foi possível ler o clipboard."))
+        }
+      >
+        Ler do sistema
+      </button>
+      <button
+        className="primary-button"
+        disabled={dataChannel?.readyState !== "open"}
+        onClick={() => {
+          if (enabled.current && dataChannel?.readyState === "open")
+            dataChannel.send(
+              JSON.stringify({ type: "clipboard-text", text: local }),
+            );
         }}
       >
-        <h3
-          style={{
-            margin: 0,
-            fontSize: '0.95rem',
-            color: 'var(--cd-text)',
-          }}
-        >
-          Clipboard Compartilhado
-        </h3>
-        <Toggle
-          checked={syncEnabled}
-          onChange={setSyncEnabled}
-          label='Sincronizar automaticamente'
-        />
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-        <div>
-          <label
-            style={{
-              display: 'block',
-              fontSize: '0.8rem',
-              color: 'var(--cd-text-muted)',
-              marginBottom: '0.5rem',
-            }}
-          >
-            Meu Clipboard
-          </label>
-          <div
-            style={{
-              border: `1px solid var(--cd-border)`,
-              borderRadius: 'var(--cd-radius)',
-              padding: '0.75rem',
-              minHeight: '120px',
-              fontFamily: 'monospace',
-              fontSize: '0.85rem',
-              color: 'var(--cd-text)',
-              background: 'var(--cd-surface)',
-              overflowY: 'auto',
-            }}
-          >
-            {localClipboard || '(vazio)'}
-          </div>
-          <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem' }}>
-            <Button
-              onClick={handleCopyLocal}
-              variant='secondary'
-              btnStyle={{ flex: 1, padding: '0.5rem', fontSize: '0.8rem' }}
-            >
-              Ler do Sistema
-            </Button>
-            <Button
-              onClick={handleSendToRemote}
-              disabled={!localClipboard || !syncEnabled}
-              variant='primary'
-              btnStyle={{
-                flex: 1,
-                padding: '0.5rem',
-                fontSize: '0.8rem',
-                opacity: !localClipboard || !syncEnabled ? 0.5 : 1,
-              }}
-            >
-              Enviar ao Remoto
-            </Button>
-          </div>
-        </div>
-
-        <div>
-          <label
-            style={{
-              display: 'block',
-              fontSize: '0.8rem',
-              color: 'var(--cd-text-muted)',
-              marginBottom: '0.5rem',
-            }}
-          >
-            Clipboard Remoto
-          </label>
-          <div
-            style={{
-              border: `1px solid var(--cd-border)`,
-              borderRadius: 'var(--cd-radius)',
-              padding: '0.75rem',
-              minHeight: '120px',
-              fontFamily: 'monospace',
-              fontSize: '0.85rem',
-              color: 'var(--cd-text)',
-              background: 'var(--cd-surface)',
-              overflowY: 'auto',
-            }}
-          >
-            {remoteClipboard || '(vazio)'}
-          </div>
-          <div style={{ marginTop: '0.5rem' }}>
-            <Button
-              onClick={handleApplyRemote}
-              disabled={!remoteClipboard}
-              variant='success'
-              btnStyle={{
-                width: '100%',
-                padding: '0.5rem',
-                fontSize: '0.8rem',
-                opacity: !remoteClipboard ? 0.5 : 1,
-              }}
-            >
-              Aplicar ao Meu Sistema
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {lastSync && (
-        <div
-          style={{
-            marginTop: '0.75rem',
-            fontSize: '0.75rem',
-            color: 'var(--cd-text-muted)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-          }}
-        >
-          <Badge variant='success' style={{ fontSize: '0.7rem', padding: '0.15rem 0.4rem' }}>
-            Sincronizado
-          </Badge>
-          <span>Última sincronização: {lastSync}</span>
-        </div>
-      )}
-    </Card>
+        Enviar ao remoto
+      </button>
+      <label>
+        Clipboard remoto
+        <textarea aria-label="Clipboard remoto" readOnly value={remote} />
+      </label>
+      <button
+        className="secondary-button"
+        onClick={() =>
+          void window.electronAPI
+            .applySessionClipboard(remote)
+            .catch(() => setError("Não foi possível aplicar o clipboard."))
+        }
+      >
+        Aplicar no meu computador
+      </button>
+    </section>
   );
 }

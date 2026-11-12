@@ -9,6 +9,10 @@ namespace CoffeeDesk
     class Program
     {
         [DllImport("user32.dll")]
+        static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+        [DllImport("user32.dll")]
+        static extern bool SetProcessDPIAware();
+        [DllImport("user32.dll")]
         static extern bool SetCursorPos(int X, int Y);
 
         [DllImport("user32.dll")]
@@ -104,6 +108,7 @@ namespace CoffeeDesk
 
         static void Main(string[] args)
         {
+            try { SetProcessDpiAwarenessContext(new IntPtr(-4)); } catch { try { SetProcessDPIAware(); } catch {} }
             Console.OutputEncoding = Encoding.UTF8;
             Console.WriteLine("READY");
             Console.Out.Flush();

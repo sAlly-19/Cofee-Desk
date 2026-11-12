@@ -8,8 +8,9 @@ const output = path.resolve(__dirname, "../release");
     .readdirSync(output)
     .filter(
       (name) =>
-        name.startsWith("Coffee-Desk-" + version + "-") &&
-        /\.(exe|zip|blockmap)$/.test(name),
+        (name.startsWith("Coffee-Desk-" + version + "-") &&
+          /\.(exe|zip|blockmap)$/.test(name)) ||
+        name === "latest.yml",
     )
     .sort();
   if (!files.length) throw new Error("Nenhum arquivo de release encontrado.");

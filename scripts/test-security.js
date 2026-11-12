@@ -42,12 +42,12 @@ class Device {
     }
     throw new Error("Timed out waiting for " + type);
   }
-  async auth() {
+  async auth(capabilities = ["session-permissions-v1"]) {
     await this.opened();
     const publicKey = this.pair.publicKey
       .export({ format: "der", type: "spki" })
       .toString("base64");
-    this.send({ type: "hello", version: 2, publicKey });
+    this.send({ type: "hello", version: 2, capabilities, publicKey });
     const c = await this.take("challenge");
     this.signature = crypto
       .sign(
@@ -145,7 +145,12 @@ async function run() {
     );
     const invalid = create();
     await invalid.opened();
-    invalid.send({ type: "hello", version: 2, publicKey: "a".repeat(60) });
+    invalid.send({
+      type: "hello",
+      version: 2,
+      capabilities: ["session-permissions-v1"],
+      publicKey: "a".repeat(60),
+    });
     check(
       "Invalid public key rejected",
       (await invalid.take("error")).code === "AUTH",
@@ -167,13 +172,25 @@ async function run() {
     const pub = a.pair.publicKey
       .export({ format: "der", type: "spki" })
       .toString("base64");
-    replay.send({ type: "hello", version: 2, publicKey: pub });
+    replay.send({
+      type: "hello",
+      version: 2,
+      capabilities: ["session-permissions-v1"],
+      publicKey: pub,
+    });
     await replay.take("challenge");
     replay.send({ type: "authenticate", signature: a.signature });
     check(
       "Challenge replay rejected",
       (await replay.take("error")).code === "AUTH",
     );
+    const outdated = await create().auth([]);
+    a.send({ type: "connect-request", targetId: outdated.id });
+    check(
+      "Call requires negotiated permission capability",
+      (await a.take("error")).code === "UPGRADE_REQUIRED",
+    );
+    outdated.close();
     a.send({ type: "connect-request", targetId: b.id, fromId: c.id });
     const ringing = await a.take("call-ringing"),
       incoming = await b.take("incoming-call");
@@ -182,7 +199,14 @@ async function run() {
       incoming.fromId === a.id,
     );
     const callId = ringing.callId;
-    c.send({ type: "call-accepted", targetId: a.id, callId, fromId: b.id });
+    c.send({
+      type: "call-accepted",
+      permissions: { control: true, clipboard: true, files: true },
+      sourceKind: "screen",
+      targetId: a.id,
+      callId,
+      fromId: b.id,
+    });
     check(
       "Forged acceptance rejected",
       (await c.take("error")).code === "FORBIDDEN",
@@ -192,11 +216,89 @@ async function run() {
       "SDP before consent rejected",
       (await a.take("error")).code === "STATE",
     );
-    b.send({ type: "call-accepted", targetId: a.id, callId });
+    b.send({
+      type: "call-accepted",
+      permissions: { control: true, clipboard: true, files: true },
+      sourceKind: "screen",
+      targetId: a.id,
+      callId,
+    });
     check(
       "Recipient may accept pending call",
       (await a.take("call-accepted")).callId === callId,
     );
+    check(
+      "Host receives confirmed acceptance",
+      (await b.take("call-accepted")).role === "host",
+    );
+    const full = { control: true, clipboard: true, files: true };
+    a.send({
+      type: "permissions-update",
+      targetId: b.id,
+      callId,
+      permissions: full,
+      sourceKind: "screen",
+    });
+    check(
+      "Viewer cannot grant permissions",
+      (await a.take("error")).code === "FORBIDDEN",
+    );
+    c.send({
+      type: "permissions-update",
+      targetId: a.id,
+      callId,
+      permissions: full,
+      sourceKind: "screen",
+    });
+    check(
+      "Third party cannot change permissions",
+      (await c.take("error")).code === "FORBIDDEN",
+    );
+    b.send({
+      type: "permissions-update",
+      targetId: a.id,
+      callId,
+      permissions: {
+        control: true,
+        clipboard: false,
+        files: false,
+        extra: true,
+      },
+      sourceKind: "screen",
+    });
+    check(
+      "Unknown permission fields rejected",
+      (await b.take("error")).code === "FORBIDDEN",
+    );
+    b.send({
+      type: "permissions-update",
+      targetId: a.id,
+      callId,
+      permissions: full,
+      sourceKind: "window",
+    });
+    check(
+      "Window sharing disables remote control",
+      !(await a.take("permissions-updated")).permissions.control,
+    );
+    check(
+      "Host receives authoritative window permissions",
+      !(await b.take("permissions-updated")).permissions.control,
+    );
+    b.send({
+      type: "permissions-update",
+      targetId: a.id,
+      callId,
+      permissions: { control: false, clipboard: false, files: false },
+      sourceKind: "screen",
+    });
+    check(
+      "Host can revoke all optional resources",
+      Object.values((await a.take("permissions-updated")).permissions).every(
+        (v) => v === false,
+      ),
+    );
+    await b.take("permissions-updated");
     c.send({ type: "disconnect", targetId: a.id, callId });
     check(
       "Third-party disconnect rejected",
@@ -437,6 +539,7 @@ async function run() {
     bannedAttempt.send({
       type: "hello",
       version: 2,
+      capabilities: ["session-permissions-v1"],
       publicKey: b.pair.publicKey
         .export({ format: "der", type: "spki" })
         .toString("base64"),

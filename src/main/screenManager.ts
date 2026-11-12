@@ -1,139 +1,99 @@
-import { desktopCapturer, ipcMain, session } from 'electron';
-import { IPC_CHANNELS } from '../shared/ipcChannels';
-import type { DesktopSource } from '../shared/types';
-
-// Sessão de captura ativa
-let activeSourceId: string | null = null;
-let activeStream: MediaStream | null = null;
-
-/**
- * Lista fontes de desktop disponíveis (telas e janelas).
- */
+import { desktopCapturer, ipcMain, session, screen, webContents } from "electron";
+import { IPC_CHANNELS } from "../shared/ipcChannels";
+import type { DesktopSource } from "../shared/types";
+import { assertTrusted } from "./ipcSecurity";
+import {
+  nativeSession,
+  prepareNativeSource,
+  selectedSource,
+} from "./sessionAuthority";
 export async function getDesktopSources(): Promise<DesktopSource[]> {
   const sources = await desktopCapturer.getSources({
-    types: ['screen', 'window'],
-    thumbnailSize: { width: 160, height: 120 },
+    types: ["screen", "window"],
+    thumbnailSize: { width: 240, height: 135 },
   });
-
-  return sources.map((source) => ({
-    id: source.id,
-    name: source.name,
-    thumbnail: source.thumbnail.toDataURL(),
-    displayId: source.display_id ?? '',
+  return sources.map((s) => ({
+    id: s.id,
+    name: s.name,
+    thumbnail: s.thumbnail.toDataURL(),
+    displayId: s.display_id || "",
+    isPrimary: s.display_id === String(screen.getPrimaryDisplay().id),
   }));
 }
-
-/**
- * Inicia captura da fonte especificada.
- * Retorna o ID da fonte para o renderer iniciar o getDisplayMedia.
- */
-export async function startDesktopCapture(sourceId: string): Promise<{ success: boolean; sourceId: string }> {
-  if (activeStream) {
-    activeStream.getTracks().forEach((track) => track.stop());
-    activeStream = null;
-  }
-
-  activeSourceId = sourceId;
-  console.log(`[Screen] Captura iniciada: ${sourceId}`);
-  return { success: true, sourceId };
+export async function selectDesktopSource(sender: number, sourceId: string) {
+  if (typeof sourceId !== "string" || sourceId.length > 150)
+    throw new Error("Fonte inválida");
+  const source = (await getDesktopSources()).find((s) => s.id === sourceId);
+  if (!source) throw new Error("A tela ou janela não está mais disponível");
+  const kind = source.id.startsWith("screen:") ? "screen" : "window";
+  const display =
+    kind === "screen"
+      ? screen.getAllDisplays().find((d) => String(d.id) === source.displayId)
+      : undefined;
+  if (kind === "screen" && !display) throw new Error("Monitor não encontrado");
+  const bounds = display
+    ? process.platform === "win32"
+      ? screen.dipToScreenRect(null, display.bounds)
+      : display.bounds
+    : undefined;
+  prepareNativeSource(sender, { sourceId, sourceKind: kind, bounds });
+  return { success: true, sourceId, kind };
 }
-
-/**
- * Para a captura de tela ativa.
- */
-export async function stopDesktopCapture(): Promise<{ success: boolean }> {
-  if (activeStream) {
-    activeStream.getTracks().forEach((track) => track.stop());
-    activeStream = null;
-  }
-  activeSourceId = null;
-  console.log('[Screen] Captura parada');
-  return { success: true };
-}
-
-/**
- * Retorna a fonte ativa atualmente.
- */
-export function getActiveSourceId(): string | null {
-  return activeSourceId;
-}
-
-/**
- * Registra handlers de IPC de captura de tela e handler nativo de getDisplayMedia.
- */
 export function registerScreenIpcHandlers(): void {
-  // Configura interceptador nativo de getDisplayMedia para o Electron
-  try {
-    if (session.defaultSession) {
-      // Concede permissões para captura de tela e mídia sem bloqueios
-      session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
-        if (permission === 'display-capture' || permission === 'media') {
-          return true;
-        }
-        return true;
-      });
+  let inspecting=false;
+  const invalidate=(id:number)=>{prepareNativeSource(id);const owner=webContents.fromId(id);if(owner&&!owner.isDestroyed())owner.send('capture:unavailable');};
+  const timer=setInterval(()=>{if(inspecting)return;const hosts=webContents.getAllWebContents().filter(w=>nativeSession(w.id)?.role==='host'&&selectedSource(w.id));if(!hosts.length)return;inspecting=true;
+    void desktopCapturer.getSources({types:['screen','window'],thumbnailSize:{width:0,height:0}}).then(available=>{for(const owner of hosts){const selected=selectedSource(owner.id);if(selected&&!available.some(s=>s.id===selected.sourceId))invalidate(owner.id);}}).catch(()=>{/* A transient enumeration failure does not choose another source. */}).finally(()=>{inspecting=false;});
+  },2000);timer.unref();
+  const topology=()=>{for(const owner of webContents.getAllWebContents())if(nativeSession(owner.id)?.role==='host'&&selectedSource(owner.id)?.sourceKind==='screen')invalidate(owner.id);};
+  screen.on('display-removed',topology);screen.on('display-metrics-changed',topology);
 
-      session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-        if (permission === 'display-capture' || permission === 'media') {
-          return callback(true);
-        }
-        return callback(true);
-      });
-
-      session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
-        desktopCapturer
-          .getSources({ types: ['screen', 'window'] })
-          .then((sources) => {
-            const primary =
-              sources.find((s) => s.id.startsWith('screen:0')) ||
-              sources.find((s) => s.id.startsWith('screen')) ||
-              sources[0];
-
-            if (primary) {
-              console.log(`[Screen] setDisplayMediaRequestHandler selecionou: ${primary.name} (${primary.id})`);
-              callback({ video: { id: primary.id, name: primary.name } });
-            } else {
-              console.warn('[Screen] Nenhuma fonte de tela encontrada');
-              callback(null);
-            }
-          })
-          .catch((err) => {
-            console.error('[Screen] Erro no setDisplayMediaRequestHandler:', err);
-            callback(null);
-          });
-      });
-    }
-  } catch (err) {
-    console.warn('[Screen] Não foi possível configurar setDisplayMediaRequestHandler:', err);
-  }
-
-  ipcMain.handle(IPC_CHANNELS.DESKTOP_SOURCES, async () => {
-    try {
-      return await getDesktopSources();
-    } catch (err) {
-      console.error('[Screen] Erro ao listar fontes:', err);
-      return [];
-    }
+  session.defaultSession.setPermissionCheckHandler(
+    (_contents, permission) =>
+      permission === "display-capture" || permission === "media",
+  );
+  session.defaultSession.setPermissionRequestHandler(
+    (_contents, permission, callback) =>
+      callback(permission === "display-capture" || permission === "media"),
+  );
+  session.defaultSession.setDisplayMediaRequestHandler(
+    async (request, callback) => {
+      try {
+        const sender = request.frame?.processId;
+        // Match the exact main frame, not a renderer-provided webContents id.
+          const owner = webContents
+          .getAllWebContents()
+          .find((w) => w.mainFrame === request.frame);
+        if (!owner || sender === undefined)
+          throw new Error("Captura não autorizada");
+        const active = nativeSession(owner.id),
+          selected = selectedSource(owner.id);
+        if (!active || active.role !== "host" || !selected)
+          throw new Error("Aceite ainda não confirmado");
+        const source = (
+          await desktopCapturer.getSources({ types: ["screen", "window"] })
+        ).find((s) => s.id === selected.sourceId);
+        if (!source) throw new Error("Fonte encerrada");
+        callback({ video: source });
+      } catch {
+        callback({});
+      }
+    },
+  );
+  ipcMain.handle(IPC_CHANNELS.DESKTOP_SOURCES, async (event) => {
+    assertTrusted(event);
+    return getDesktopSources();
   });
-
   ipcMain.handle(
     IPC_CHANNELS.DESKTOP_STREAM_START,
-    async (_event, sourceId: string) => {
-      try {
-        return await startDesktopCapture(sourceId);
-      } catch (err) {
-        console.error('[Screen] Erro ao iniciar captura:', err);
-        return { success: false, sourceId: '' };
-      }
-    }
+    async (event, id: string) => {
+      assertTrusted(event);
+      return selectDesktopSource(event.sender.id, id);
+    },
   );
-
-  ipcMain.handle(IPC_CHANNELS.DESKTOP_STREAM_STOP, async () => {
-    try {
-      return await stopDesktopCapture();
-    } catch (err) {
-      console.error('[Screen] Erro ao parar captura:', err);
-      return { success: false };
-    }
+  ipcMain.handle(IPC_CHANNELS.DESKTOP_STREAM_STOP, (event) => {
+    assertTrusted(event);
+    prepareNativeSource(event.sender.id);
+    return { success: true };
   });
 }

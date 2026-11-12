@@ -1,3 +1,4 @@
+import type { SessionPermissions } from "../../../shared/session";
 import {
   Maximize2,
   Minimize2,
@@ -11,6 +12,7 @@ import { formatSpeed } from "../../hooks/useFileTransfer";
 
 interface RemoteToolbarProps {
   remoteId: string;
+  permissions: SessionPermissions;
   role: "host" | "client";
   peerState: string;
   isKeyboardFocused: boolean;
@@ -27,6 +29,7 @@ interface RemoteToolbarProps {
 
 export function RemoteToolbar({
   remoteId,
+  permissions,
   role,
   peerState,
   isKeyboardFocused,
@@ -101,6 +104,7 @@ export function RemoteToolbar({
         {/* Toggle de permissão de controle remoto pelo Host */}
         {role === "host" && (
           <button
+            disabled={!permissions.control}
             onClick={onToggleHostControl}
             title={
               hostControlEnabled
@@ -208,6 +212,7 @@ export function RemoteToolbar({
         {onToggleDrawer && (
           <>
             <button
+              disabled={!permissions.clipboard}
               onClick={() => onToggleDrawer("clipboard")}
               title="Área de Transferência Compartilhada"
               className="cd-btn-tactile"
@@ -245,6 +250,7 @@ export function RemoteToolbar({
             </button>
 
             <button
+              disabled={!permissions.files}
               onClick={() => onToggleDrawer("files")}
               title="Transferência de Arquivos"
               className="cd-btn-tactile"

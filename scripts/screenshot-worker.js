@@ -125,10 +125,18 @@ async function create(partition, width = 1672, height = 941) {
   );
   win.webContents.session.setDisplayMediaRequestHandler(
     async (_request, callback) => {
-      const sources = await desktopCapturer.getSources({ types: ["screen"] });
-      callback(sources[0] ? { video: sources[0] } : {});
+      const authority = require("../dist-electron/main/sessionAuthority.js");
+      const source = authority.selectedSource(win.webContents.id);
+      const active = authority.nativeSession(win.webContents.id);
+      const sources = await desktopCapturer.getSources({
+        types: ["screen", "window"],
+      });
+      const selected = source && sources.find((s) => s.id === source.sourceId);
+      callback(active?.role === "host" && selected ? { video: selected } : {});
     },
   );
+  if (partition.startsWith("redesign-first"))
+    require("../dist-electron/main/updater.js").registerUpdater(win);
   await win.loadFile(path.join(root, "dist-electron/renderer/index.html"));
   await ready(win);
   return win;
@@ -154,6 +162,21 @@ async function run() {
       securityProfiles.get(sender.id) || "default",
     ),
   );
+  require(
+    path.join(root, "dist-electron/main/sessionAuthority"),
+  ).registerSessionAuthority();
+  require(
+    path.join(root, "dist-electron/main/historyManager"),
+  ).registerHistoryHandlers((sender) =>
+    path.join(
+      out,
+      "secure-identities",
+      securityProfiles.get(sender.id) || "default",
+    ),
+  );
+  require(
+    path.join(root, "dist-electron/main/screenManager"),
+  ).registerScreenIpcHandlers();
   require(
     path.join(root, "dist-electron/main/inputManager.js"),
   ).registerInputIpcHandlers();
@@ -392,7 +415,7 @@ async function run() {
       "Refusal reaches caller",
       await until(
         win,
-        'document.body.textContent.includes("Conexão Recusada")',
+        'document.body.textContent.includes("recusada pelo computador")',
       ),
     );
     check(
@@ -406,6 +429,10 @@ async function run() {
     await until(
       peer,
       'document.body.textContent.includes("Aceitar e Compartilhar")',
+    );
+    await until(
+      peer,
+      '[...document.querySelectorAll("button")].some(b=>b.textContent.includes("Aceitar e Compartilhar")&&!b.disabled)',
     );
     await click(peer, "Aceitar e Compartilhar");
     check(
@@ -493,6 +520,87 @@ async function run() {
     await js(win, () =>
       document.querySelector('button[title="Fechar painel"]').click(),
     );
+    await click(peer, "Tela e permissões");
+    check(
+      "Host permissions editor opens",
+      await until(
+        peer,
+        'document.querySelectorAll(".permission-fields input").length===3',
+      ),
+    );
+    for (let i = 0; i < 3; i++) {
+      await js(
+        peer,
+        'document.querySelectorAll(".permission-fields input")[' +
+          i +
+          "].click()",
+      );
+      await wait(250);
+    }
+    check(
+      "Revoked control cannot be reenabled through IPC",
+      await js(
+        peer,
+        "window.electronAPI.toggleInputControl(true).then(v=>v===false)",
+      ),
+    );
+    for (const device of [win, peer]) {
+      check(
+        "Revoked clipboard read blocked in main " + device.webContents.id,
+        await js(
+          device,
+          "window.electronAPI.readSessionClipboard().then(()=>false,()=>true)",
+        ),
+      );
+      check(
+        "Revoked clipboard write blocked in main " + device.webContents.id,
+        await js(
+          device,
+          'window.electronAPI.applySessionClipboard("unauthorized").then(()=>false,()=>true)',
+        ),
+      );
+      check(
+        "Revoked file save blocked in main " + device.webContents.id,
+        await js(
+          device,
+          'window.electronAPI.saveFileToDownloads("not-authorized.txt","dGVzdA==").then(r=>!r.success,()=>true)',
+        ),
+      );
+    }
+    check(
+      "Viewer toolbar reflects revocation",
+      await js(
+        win,
+        () =>
+          document.querySelector(
+            'button[title="Área de Transferência Compartilhada"]',
+          ).disabled,
+      ),
+    );
+    for (let i = 0; i < 3; i++) {
+      await js(
+        peer,
+        'document.querySelectorAll(".permission-fields input")[' +
+          i +
+          "].click()",
+      );
+      await wait(250);
+    }
+    check(
+      "Host can reauthorize control after server acknowledgment",
+      await js(
+        peer,
+        "window.electronAPI.getInputControlStatus().then(s=>s.enabled)",
+      ),
+    );
+    await js(
+      peer,
+      '[...document.querySelectorAll(".modal-panel button")].find(b=>b.getAttribute("aria-label")==="Fechar modal")?.click()',
+    );
+    await js(
+      peer,
+      'document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}))',
+    );
     // Capturing a hidden surface containing a live desktop video can fail with
     // UnknownVizError on Windows. Dashboard captures below do not depend on it.
     try {
@@ -562,6 +670,10 @@ async function run() {
       "coffee-desk-local-test",
     );
     await click(passwordPeer, "Salvar e Fechar");
+    check(
+      "Password save completes before reload",
+      await until(passwordPeer, '!document.querySelector(".modal-panel")'),
+    );
     await reload(passwordPeer);
     await until(
       passwordPeer,
@@ -606,6 +718,20 @@ async function run() {
       "Real password automatically accepts session",
       await until(passwordPeer, '!!document.querySelector(".session-stage")'),
     );
+    check(
+      "New unattended access is view only",
+      await js(
+        passwordPeer,
+        "window.electronAPI.getSecuritySettings().then(s=>Object.values(s.unattendedPermissions).every(v=>v===false))",
+      ),
+    );
+    check(
+      "Unattended control blocked natively",
+      await js(
+        passwordPeer,
+        "window.electronAPI.toggleInputControl(true).then(v=>v===false)",
+      ),
+    );
     await click(win, "Desconectar");
     await click(win, "Encerrar Sessão");
     check(
@@ -643,7 +769,7 @@ async function run() {
       "Full history opens",
       await until(
         win,
-        'document.body.textContent.includes("Todas as Sessões Recentes")',
+        'document.body.textContent.includes("Histórico de sessões")',
       ),
     );
     await click(win, "Limpar Todo o Histórico");

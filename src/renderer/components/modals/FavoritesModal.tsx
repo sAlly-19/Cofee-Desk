@@ -1,3 +1,5 @@
+import {matchesDevice} from "../../../shared/history";
+import { useState } from "react";
 import { Star, Monitor, Play, MoreHorizontal } from "lucide-react";
 import { Modal } from "../ui/Modal";
 import type { RecentSession } from "../../types/app";
@@ -16,6 +18,8 @@ export function FavoritesModal({
   onOptions: (session: RecentSession) => void;
   onRemove: (session: RecentSession) => void;
 }) {
+  const [query, setQuery] = useState("");
+  const filtered=favorites.filter(s=>matchesDevice(s,query));
   return (
     <Modal
       isOpen={isOpen}
@@ -25,6 +29,16 @@ export function FavoritesModal({
       icon={<Star size={20} />}
       maxWidth={680}
     >
+      <input
+        className="device-search"
+        aria-label="Buscar favoritos"
+        placeholder="Buscar por nome ou ID"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+      />
+      {favorites.length > 0 && filtered.length === 0 && (
+        <p role="status">Nenhum favorito encontrado.</p>
+      )}
       {favorites.length === 0 ? (
         <div className="favorites-empty">
           <Star size={30} />
@@ -36,7 +50,7 @@ export function FavoritesModal({
         </div>
       ) : (
         <div className="favorites-list">
-          {favorites.map((session) => (
+          {filtered.map((session) => (
             <div className="favorite-row" key={session.remoteId}>
               <Monitor className="favorite-device-icon" size={22} />
               <div className="recent-device">
