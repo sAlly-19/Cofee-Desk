@@ -16,6 +16,16 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   });
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
+  env.COFFEE_TEST_LOCAL_SIGNALING = "1";
+  const profile = path.join(output, "profile");
+  fs.mkdirSync(profile, { recursive: true });
+  const configFile = path.join(profile, "device-security-v2.json");
+  const config = fs.existsSync(configFile)
+    ? JSON.parse(fs.readFileSync(configFile, "utf8"))
+    : { enabled: false, identities: {} };
+  config.url = "ws://localhost:8080/ws";
+  config.urlSource = "explicit";
+  fs.writeFileSync(configFile, JSON.stringify(config));
   const executable = path.join(root, "release/win-unpacked/Coffee-Desk.exe");
   const child = spawn(
     executable,

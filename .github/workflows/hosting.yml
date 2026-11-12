@@ -19,6 +19,7 @@ jobs:
             package-lock.json
             signaling-server/package-lock.json
       - run: npm run build:hosting
+      - run: npm run test:client-config
       - run: npm run typecheck
       - run: npm run build:electron
       - run: npm run test:hosting

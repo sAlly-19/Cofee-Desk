@@ -138,15 +138,19 @@ export function SettingsModal({
             {saveError}
           </div>
         )}
-        <label className="settings-label">
-          Servidor de sinalização
-          <input
-            aria-label="Servidor de sinalização"
-            value={serverUrl}
-            onChange={(e) => setServerUrl(e.target.value)}
-            placeholder="wss://seu-servidor/ws"
-          />
-        </label>
+        <div className="settings-service-status">
+          <strong>
+            {officialUrl
+              ? "Serviço oficial do Coffee Desk"
+              : "Servidor local de desenvolvimento"}
+          </strong>
+          <p className="settings-hint">
+            {officialUrl
+              ? "A conexão é configurada automaticamente. Você não precisa informar um endereço."
+              : "O serviço oficial será incorporado ao build pelo responsável pela distribuição."}
+          </p>
+        </div>
+
         {officialUrl && serverUrl !== officialUrl && (
           <button
             className="secondary-button"
@@ -160,6 +164,18 @@ export function SettingsModal({
           Servidores externos exigem WSS. Alterar o servidor encerra a sessão
           atual; o histórico permanece separado por servidor.
         </p>
+        <details className="settings-advanced-server">
+          <summary>Servidor personalizado (avançado)</summary>
+          <label className="settings-label">
+            Servidor de sinalização
+            <input
+              aria-label="Servidor de sinalização"
+              value={serverUrl}
+              onChange={(e) => setServerUrl(e.target.value)}
+              placeholder="wss://seu-servidor/ws"
+            />
+          </label>
+        </details>
         {/* Opção: Acesso Não Supervisionado */}
         <div
           style={{

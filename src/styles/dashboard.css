@@ -1154,3 +1154,7 @@
 }
 
 .server-alert{display:flex;align-items:center;justify-content:space-between;gap:16px}.server-alert .text-button{font-size:13px}
+
+.settings-advanced-server summary { cursor: pointer; color: var(--text-secondary); padding: .5rem 0; }
+.settings-advanced-server[open] summary { margin-bottom: .75rem; }
+.settings-service-status strong { color: var(--text-primary); }

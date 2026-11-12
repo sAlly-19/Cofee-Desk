@@ -40,6 +40,11 @@ const endpoint = (input: string) => {
   url.pathname = "/ws";
   return url.href;
 };
+function officialService() {
+  if (!app.isPackaged && process.env.COFFEE_TEST_LOCAL_SIGNALING === "1")
+    return "";
+  return OFFICIAL_SIGNALING_URL;
+}
 const filename = () =>
   path.join(
     profiles.getStore() ?? app.getPath("userData"),
@@ -48,12 +53,12 @@ const filename = () =>
 function read(): Settings {
   try {
     const stored: Settings = JSON.parse(fs.readFileSync(filename(), "utf8"));
-    return selectService(stored, OFFICIAL_SIGNALING_URL);
+    return selectService(stored, officialService());
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT")
       throw new Error("Não foi possível ler a identidade protegida");
     return {
-      url: OFFICIAL_SIGNALING_URL || LOCAL_SIGNALING_URL,
+      url: officialService() || LOCAL_SIGNALING_URL,
       urlSource: "default",
       enabled: false,
       identities: {},
@@ -145,7 +150,7 @@ export function registerDeviceSecurity(
       url: state.url,
       enabled: state.enabled,
       hasPassword: !!state.verifier,
-      officialUrl: OFFICIAL_SIGNALING_URL || null,
+      officialUrl: officialService() || null,
     };
   });
   handle("security:set-url", (url: unknown) => {
@@ -158,10 +163,10 @@ export function registerDeviceSecurity(
     return state.url;
   });
   handle("security:use-official", () => {
-    if (!OFFICIAL_SIGNALING_URL)
+    if (!officialService())
       throw new Error("O serviço oficial ainda não foi disponibilizado");
     const state = read();
-    state.url = endpoint(OFFICIAL_SIGNALING_URL);
+    state.url = endpoint(officialService());
     state.urlSource = "default";
     write(state);
     return state.url;

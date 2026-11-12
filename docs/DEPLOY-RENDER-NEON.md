@@ -4,7 +4,7 @@ Café - Sistemas & Softwares
 
 ## Situação desta preparação
 
-Configuração e testes locais preparados. Nenhum serviço, banco público ou endereço oficial foi criado por esta preparação. O instalador não será gerado nesta etapa. As contas Render e Neon precisam ser criadas pelo proprietário, com MFA, e conectadas antes da implantação. Não envie credenciais pelo chat.
+Servidor e painel já foram implantados na Render com PostgreSQL na Neon. HTTPS, banco, painel e desafio WSS passaram na verificação pública. O responsável confirmou login com TOTP e teste de bloqueio/desbloqueio. O endereço real fica somente na configuração local ignorada e não será incluído neste documento. Nenhum instalador novo será gerado nesta etapa.
 
 ## 1. Contas, repositório e região
 
@@ -106,7 +106,7 @@ Somente depois de validar o endereço:
 npm.cmd run hosting:configure-client -- https://ENDERECO-REAL.onrender.com
 ```
 
-O comando repete o probe e grava apenas o endereço público em `src/shared/publicService.ts`. Não altera a versão e não gera instalador. Instalação nova passa a usar o serviço oficial automaticamente quando um próximo build for feito.
+O comando repete o probe e grava o endereço somente em `.env.client.local`, ignorado pelo Git. Não altera arquivos rastreados, a versão ou o instalador. O build injeta o endereço apenas em `dist-electron/shared/publicService.js`, também ignorado, para que uma instalação nova conecte automaticamente.
 
 Preferências novas registram se a seleção foi automática ou explícita. Endpoints explicitamente configurados são preservados. Arquivos 1.0.1 antigos não registravam essa informação: conservamos seu endereço e oferecemos **Usar serviço oficial do Coffee Desk** nas configurações, sem digitação. Identidades e histórico continuam separados por servidor. Redefinir preferências não apaga chaves nem sanções. Mudar a URL encerra a sessão atual.
 
@@ -137,4 +137,17 @@ A regressão revelou uma corrida no fallback de exibição da janela, que podia 
 
 Evidências locais ficam em `artifacts/hosting-tests/validation.json`, `artifacts/hosting-build-check/build-result.json`, `artifacts/security-live/validation.json`, `artifacts/admin-browser/browser.json` e `artifacts/redesign/validation.json`. Esses diretórios não entram no Git.
 
-**Pendente de contas/conexões:** criação de Neon e Render, implantação, teste de IP/TLS na infraestrutura real, reinício/suspensão no provedor e teste entre duas máquinas em redes distintas. Não há URL oficial configurada, nenhuma credencial pública foi criada, nenhuma publicação foi feita e nenhum instalador novo foi gerado. A versão do pacote continua 1.0.1.
+**Atualização após implantação:** contas, banco, serviço e administrador já estão configurados. O responsável confirmou conexão do cliente e bloqueio/desbloqueio. Permanecem pendentes a validação completa entre redes distintas e os cenários de reinício/suspensão no provedor. Nenhum instalador novo foi gerado.
+
+## Endereço do cliente fora do GitHub
+
+A configuração de distribuição fica em `.env.client.local`, fora do controle de versão. O campo `COFFEE_OFFICIAL_SIGNALING_URL` também pode ser fornecido como segredo do GitHub Actions com o mesmo nome. A variável de ambiente tem precedência sobre o arquivo local. Não coloque valores reais em exemplos, YAML ou arquivos TypeScript.
+
+`npm run build:electron` incorpora a configuração somente no JavaScript compilado do processo principal. Os comandos de empacotamento recusam gerar uma distribuição sem serviço oficial configurado. O endereço não é impresso pelos scripts de build. Builds de desenvolvimento sem configuração usam sinalização local; os testes Electron forçam o ambiente local para não cadastrar dispositivos fictícios em produção.
+
+A URL pode ser descoberta no aplicativo distribuído e no tráfego de rede. Mantê-la fora do repositório evita exposição no código publicado, mas não é um controle de autenticação. Chaves Ed25519, chamadas autorizadas, limites e moderação continuam necessários. Não reescrevemos o histórico Git: o endereço real não foi inserido no código rastreado. Binários distribuídos por releases podem conter o endereço incorporado.
+
+
+### Verificações da conexão automática
+
+Foram aprovadas 11 verificações de configuração privada (precedência, validação, logs, exclusão pelo Git e bloqueio de pacote sem configuração) e 6 verificações do IPC nativo em um perfil Electron novo, sem conexão ao serviço público. A regressão funcional usa servidor local explicitamente e não depende da configuração de distribuição. Para desenvolvimento nesta máquina, `npm run electron:dev` recompila o main e aplica o arquivo local automaticamente.

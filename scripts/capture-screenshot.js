@@ -7,6 +7,7 @@ const root = path.resolve(__dirname, "..");
 const verify = process.argv.includes("--verify");
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
+env.COFFEE_TEST_LOCAL_SIGNALING = "1";
 let server;
 let stopDatabase;
 function online() {

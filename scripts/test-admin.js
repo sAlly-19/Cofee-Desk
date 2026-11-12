@@ -122,6 +122,7 @@ async function device(url) {
     await new Promise((resolve) => inputServer.listen(pipeName, resolve));
     const env = { ...process.env, COFFEE_TEST_PIPE: pipeName };
     delete env.ELECTRON_RUN_AS_NODE;
+    env.COFFEE_TEST_LOCAL_SIGNALING = "1";
     const child = spawn(
       require("electron"),
       [path.resolve("scripts/admin-browser-worker.js")],

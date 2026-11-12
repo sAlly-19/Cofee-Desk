@@ -3,13 +3,11 @@ const path = require("node:path");
 const { probePublicService } = require("./probe-hosting");
 (async () => {
   const result = await probePublicService(process.argv[2]);
+  const { localFile } = require("./client-config");
   fs.writeFileSync(
-    path.resolve(__dirname, "../src/shared/publicService.ts"),
-    "// Public service checked at " +
-      result.checkedAt +
-      "\nexport const OFFICIAL_SIGNALING_URL: string = " +
-      JSON.stringify(result.wsUrl) +
-      ";\n",
+    localFile,
+    "COFFEE_OFFICIAL_SIGNALING_URL=" + result.wsUrl + "\n",
+    { mode: 0o600 },
   );
   const folder = path.resolve(__dirname, "../artifacts/hosting");
   fs.mkdirSync(folder, { recursive: true });
@@ -17,7 +15,9 @@ const { probePublicService } = require("./probe-hosting");
     path.join(folder, "public-probe.json"),
     JSON.stringify(result, null, 2),
   );
-  console.log("Official endpoint configured. No installer was built.");
+  console.log(
+    "Official service saved in ignored local configuration. No source URL or installer generated.",
+  );
 })().catch((error) => {
   console.error("Endpoint was not changed: " + error.message);
   process.exitCode = 1;

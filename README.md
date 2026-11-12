@@ -6,7 +6,7 @@ A versão 1.0.1 usa identidades Ed25519, PostgreSQL e painel administrativo com 
 
 Para iniciar o ambiente local, execute `npm ci`, `npm ci --prefix signaling-server` e `npm run dev:secure`. Em outro terminal, execute `npm run electron:dev`. Não há administrador padrão: siga [Administração](docs/ADMIN.md) para criar o primeiro usuário. Os comandos antigos de sinalização abaixo exigem agora a configuração descrita nesse documento.
 
-Consulte o [relatório de segurança](docs/SECURITY-1.0.1.md). O servidor e o painel não foram publicados. A confirmação anterior entre duas máquinas refere-se à versão 1.0.0; a versão atual foi validada entre instâncias locais reais.
+Consulte o [relatório de segurança](docs/SECURITY-1.0.1.md). O servidor e o painel foram implantados; o endereço é incorporado ao cliente a partir de configuração local ignorada pelo Git. A confirmação anterior entre duas máquinas refere-se à versão 1.0.0; a versão atual foi validada entre instâncias locais reais.
 
 O novo instalador fica em `release/Coffee-Desk-1.0.1-x64-Setup.exe`.
 
