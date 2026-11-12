@@ -1,4 +1,12 @@
-import { Monitor, Play, KeyRound, Edit3, Copy, Trash2 } from "lucide-react";
+import {
+  Monitor,
+  Play,
+  KeyRound,
+  Edit3,
+  Copy,
+  Trash2,
+  Star,
+} from "lucide-react";
 import { Modal } from "../ui/Modal";
 import { useModal } from "../../context/ModalContext";
 import type { RecentSession } from "../../types/app";
@@ -11,6 +19,9 @@ interface SessionOptionsModalProps {
   onRename: (id: string, newName: string) => void;
   onReport: (remoteId: string) => void;
   onDelete: (id: string) => void;
+  isFavorite: boolean;
+  onToggleFavorite: (session: RecentSession) => void;
+  canDeleteFromHistory: boolean;
 }
 
 export function SessionOptionsModal({
@@ -21,6 +32,9 @@ export function SessionOptionsModal({
   onRename,
   onReport,
   onDelete,
+  isFavorite,
+  onToggleFavorite,
+  canDeleteFromHistory,
 }: SessionOptionsModalProps): JSX.Element | null {
   const { showPrompt, showConfirm, showToast } = useModal();
 
@@ -36,6 +50,14 @@ export function SessionOptionsModal({
       maxWidth={460}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+        <button
+          className="secondary-button favorite-option"
+          aria-pressed={isFavorite}
+          onClick={() => onToggleFavorite(selectedSession)}
+        >
+          <Star size={18} fill={isFavorite ? "currentColor" : "none"} />
+          {isFavorite ? "Remover dos favoritos" : "Adicionar aos favoritos"}
+        </button>
         <button
           className="secondary-button report-button"
           onClick={() => {
@@ -123,7 +145,7 @@ export function SessionOptionsModal({
               cancelText: "Cancelar",
             });
             if (newName && newName.trim()) {
-              onRename(s.id, newName.trim());
+              onRename(s.remoteId, newName.trim());
             }
           }}
           style={{
@@ -180,41 +202,43 @@ export function SessionOptionsModal({
           <span>Copiar ID Remoto</span>
         </button>
 
-        <button
-          onClick={async () => {
-            const s = selectedSession;
-            onClose();
-            const confirmed = await showConfirm({
-              title: "Remover do Histórico",
-              message: `Deseja remover "${s.name}" (${s.remoteId}) do histórico de sessões recentes?`,
-              type: "warning",
-              destructive: true,
-              confirmText: "Remover",
-              cancelText: "Cancelar",
-            });
-            if (confirmed) {
-              onDelete(s.id);
-            }
-          }}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "12px",
-            width: "100%",
-            padding: "0.8rem 1rem",
-            backgroundColor: "rgba(239, 68, 68, 0.08)",
-            border: "1px solid rgba(239, 68, 68, 0.25)",
-            borderRadius: "10px",
-            color: "#f87171",
-            fontSize: "0.88rem",
-            fontWeight: 500,
-            cursor: "pointer",
-            textAlign: "left",
-          }}
-        >
-          <Trash2 size={16} color="#f87171" />
-          <span>Excluir do Histórico</span>
-        </button>
+        {canDeleteFromHistory && (
+          <button
+            onClick={async () => {
+              const s = selectedSession;
+              onClose();
+              const confirmed = await showConfirm({
+                title: "Remover do Histórico",
+                message: `Deseja remover "${s.name}" (${s.remoteId}) do histórico de sessões recentes?`,
+                type: "warning",
+                destructive: true,
+                confirmText: "Remover",
+                cancelText: "Cancelar",
+              });
+              if (confirmed) {
+                onDelete(s.remoteId);
+              }
+            }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              width: "100%",
+              padding: "0.8rem 1rem",
+              backgroundColor: "rgba(239, 68, 68, 0.08)",
+              border: "1px solid rgba(239, 68, 68, 0.25)",
+              borderRadius: "10px",
+              color: "#f87171",
+              fontSize: "0.88rem",
+              fontWeight: 500,
+              cursor: "pointer",
+              textAlign: "left",
+            }}
+          >
+            <Trash2 size={16} color="#f87171" />
+            <span>Excluir do Histórico</span>
+          </button>
+        )}
       </div>
     </Modal>
   );

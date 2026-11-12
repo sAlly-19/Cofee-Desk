@@ -108,7 +108,7 @@ npm.cmd run hosting:configure-client -- https://ENDERECO-REAL.onrender.com
 
 O comando repete o probe e grava o endereço somente em `.env.client.local`, ignorado pelo Git. Não altera arquivos rastreados, a versão ou o instalador. O build injeta o endereço apenas em `dist-electron/shared/publicService.js`, também ignorado, para que uma instalação nova conecte automaticamente.
 
-Preferências novas registram se a seleção foi automática ou explícita. Endpoints explicitamente configurados são preservados. Arquivos 1.0.1 antigos não registravam essa informação: conservamos seu endereço e oferecemos **Usar serviço oficial do Coffee Desk** nas configurações, sem digitação. Identidades e histórico continuam separados por servidor. Redefinir preferências não apaga chaves nem sanções. Mudar a URL encerra a sessão atual.
+Preferências novas registram se a seleção foi automática ou explícita. Endpoints explicitamente configurados são preservados. Arquivos 1.0.1 antigos não registravam essa informação: conservamos seu endereço existente. A configuração de servidor não é exibida ao usuário; a definição do serviço oficial é feita na preparação do build. Identidades e histórico continuam separados por servidor. Redefinir preferências não apaga chaves nem sanções. Mudar a URL encerra a sessão atual.
 
 ## 7. Operação, recuperação e custos
 

@@ -8,7 +8,7 @@
   "main": "dist-electron/main/index.js",
   "scripts": {
     "dev": "vite",
-    "build:electron": "node --max-old-space-size=4096 ./node_modules/typescript/lib/tsc.js -p tsconfig.electron.json && node scripts/configure-client-build.js && node -e \"const fs=require('fs'); if (!fs.existsSync('dist-electron/main/native')) fs.mkdirSync('dist-electron/main/native', {recursive:true}); if (fs.existsSync('src/main/native/CoffeeInput.exe')) fs.copyFileSync('src/main/native/CoffeeInput.exe', 'dist-electron/main/native/CoffeeInput.exe');\" && node scripts/bundle-preload.js",
+    "build:electron": "node --max-old-space-size=4096 ./node_modules/typescript/lib/tsc.js -p tsconfig.electron.json && node scripts/configure-client-build.js && node -e \"const fs=require('fs'); if (!fs.existsSync('dist-electron/main/native')) fs.mkdirSync('dist-electron/main/native', {recursive:true}); if (fs.existsSync('src/main/native/CoffeeInput.exe') && (!fs.existsSync('dist-electron/main/native/CoffeeInput.exe') || !fs.readFileSync('src/main/native/CoffeeInput.exe').equals(fs.readFileSync('dist-electron/main/native/CoffeeInput.exe')))) fs.copyFileSync('src/main/native/CoffeeInput.exe', 'dist-electron/main/native/CoffeeInput.exe');\" && node scripts/bundle-preload.js",
     "build": "vite build && npm run build:electron",
     "package": "node scripts/assert-client-config.js && npm run build && electron-builder",
     "preview": "vite preview",

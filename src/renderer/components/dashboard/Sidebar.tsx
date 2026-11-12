@@ -1,12 +1,11 @@
 import { APP_AUTHOR } from "../../branding";
-import { Shield, Monitor, Clock, Settings, CircleHelp } from "lucide-react";
+import { Monitor, Star, Settings, CircleHelp } from "lucide-react";
 import { CoffeeDeskLogo } from "../icons/CoffeeDeskLogo";
 import type { NavItemKey, ServerStatus } from "../../types/app";
 import { StatusIndicator } from "./StatusIndicator";
 const links = [
-  { key: "identity", label: "Minha Identidade", icon: Shield },
   { key: "remote", label: "Conexão Remota", icon: Monitor },
-  { key: "recent", label: "Sessões Recentes", icon: Clock },
+  { key: "favorites", label: "Favoritos", icon: Star },
   { key: "settings", label: "Configurações", icon: Settings },
   { key: "help", label: "Ajuda & Atalhos", icon: CircleHelp },
 ] as const;

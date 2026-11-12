@@ -1,9 +1,10 @@
-export type View = 'home' | 'session';
-export type SessionRole = 'client' | 'host';
-export type Tab = 'clipboard' | 'files';
-export type ConnectionStatus = 'idle' | 'calling' | 'ringing' | 'connected' | 'error';
-export type ServerStatus = 'connecting' | 'connected' | 'disconnected';
-export type NavItemKey = 'identity' | 'remote' | 'recent' | 'settings' | 'help';
+export type View = "home" | "session";
+export type SessionRole = "client" | "host";
+export type Tab = "clipboard" | "files";
+export type ConnectionStatus =
+  "idle" | "calling" | "ringing" | "connected" | "error";
+export type ServerStatus = "connecting" | "connected" | "disconnected";
+export type NavItemKey = "remote" | "favorites" | "settings" | "help";
 
 export interface RecentSession {
   id: string;

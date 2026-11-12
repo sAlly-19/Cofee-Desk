@@ -517,6 +517,21 @@ async function run() {
       "Device options open",
       await until(win, '!!document.querySelector(".modal-panel")'),
     );
+    check(
+      "Sidebar keeps remote and favorites only",
+      await js(
+        win,
+        '!![...document.querySelectorAll(".sidebar-link")].find(b=>b.textContent.includes("Conexão Remota")) && !![...document.querySelectorAll(".sidebar-link")].find(b=>b.textContent.includes("Favoritos")) && !document.querySelector(".sidebar-nav").textContent.includes("Minha Identidade") && !document.querySelector(".sidebar-nav").textContent.includes("Sessões Recentes")',
+      ),
+    );
+    await click(win, "Adicionar aos favoritos");
+    check(
+      "Device can be favorited from recent options",
+      await until(
+        win,
+        'document.querySelector(".favorite-option")?.getAttribute("aria-pressed")==="true"',
+      ),
+    );
     await capture(win, "device-options");
     await js(win, 'document.querySelector(".modal-close").click()');
     await js(win, 'document.querySelector(".options-button").click()');
@@ -566,7 +581,19 @@ async function run() {
         'window.electronAPI.verifyAccessPassword("coffee-desk-local-test")',
       ),
     );
-    await js(win, 'document.querySelector(".options-button").click()');
+    await click(win, "Favoritos");
+    check(
+      "Favorite keeps renamed device",
+      await until(
+        win,
+        'document.querySelector(".favorite-row .recent-device strong")?.textContent==="Computador de teste"',
+      ),
+    );
+    await capture(win, "favorites");
+    await js(
+      win,
+      'document.querySelector(".favorite-row .options-button").click()',
+    );
     await click(win, "Conectar com Senha");
     await until(win, '!!document.querySelector("[role=alertdialog] input")');
     await fill(win, "[role=alertdialog] input", "coffee-desk-local-test");
@@ -631,6 +658,44 @@ async function run() {
       "Empty history survives reload",
       await js(win, '!!document.querySelector(".recent-empty")'),
     );
+    await click(win, "Favoritos");
+    check(
+      "Favorite survives reload and history clearing",
+      await until(win, 'document.querySelectorAll(".favorite-row").length===1'),
+    );
+    await js(
+      win,
+      'window.dispatchEvent(new CustomEvent("signaling-scope", {detail:"wss://other-test.example/ws"}))',
+    );
+    check(
+      "Favorites isolated by server",
+      await until(win, '!!document.querySelector(".favorites-empty")'),
+    );
+    await js(
+      win,
+      'window.dispatchEvent(new CustomEvent("signaling-scope", {detail:localStorage.getItem("coffee_desk_server_url")}))',
+    );
+    check(
+      "Original server restores saved favorite",
+      await until(win, 'document.querySelectorAll(".favorite-row").length===1'),
+    );
+    await js(win, 'document.querySelector(".favorite-toggle").click()');
+    check(
+      "Removing favorite leaves history unchanged",
+      await until(
+        win,
+        '!!document.querySelector(".favorites-empty") && !!document.querySelector(".recent-empty")',
+      ),
+    );
+    await js(win, 'document.querySelector(".modal-close").click()');
+    await reload(win);
+    await until(win, '!!document.querySelector(".access-badge.is-ready")');
+    await click(win, "Favoritos");
+    check(
+      "Favorite removal persists",
+      await until(win, '!!document.querySelector(".favorites-empty")'),
+    );
+    await js(win, 'document.querySelector(".modal-close").click()');
     // A failed registration must not keep the ready badge from a previous connection.
     win.webContents.session.webRequest.onBeforeRequest(
       { urls: ["ws://localhost:8080/*"] },

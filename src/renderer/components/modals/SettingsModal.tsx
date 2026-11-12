@@ -25,17 +25,11 @@ export function SettingsModal({
   onResetIdentity,
   onSave,
 }: SettingsModalProps): JSX.Element | null {
-  const [serverUrl, setServerUrl] = useState("");
-  const [officialUrl, setOfficialUrl] = useState<string | null>(null);
   const [saveError, setSaveError] = useState("");
   const [saving, setSaving] = useState(false);
   useEffect(() => {
     if (isOpen) {
       setSaveError("");
-      void window.electronAPI.getSecuritySettings().then((s) => {
-        setServerUrl(s.url);
-        setOfficialUrl(s.officialUrl);
-      });
     }
   }, [isOpen]);
   const passwordRef = useRef<HTMLInputElement>(null);
@@ -84,20 +78,11 @@ export function SettingsModal({
               setSaving(true);
               setSaveError("");
               try {
-                const before = await window.electronAPI.getSecuritySettings();
                 await window.electronAPI.setAccessPassword(
                   unattendedPassword,
                   unattendedEnabled,
                 );
-                const url =
-                  serverUrl === before.url
-                    ? before.url
-                    : serverUrl === officialUrl
-                      ? await window.electronAPI.useOfficialSignaling()
-                      : await window.electronAPI.setSignalingUrl(serverUrl);
                 setUnattendedPassword("");
-                if (url !== before.url)
-                  window.dispatchEvent(new Event("server-changed"));
                 onSave();
               } catch (e) {
                 setSaveError((e as Error).message);
@@ -138,44 +123,6 @@ export function SettingsModal({
             {saveError}
           </div>
         )}
-        <div className="settings-service-status">
-          <strong>
-            {officialUrl
-              ? "Serviço oficial do Coffee Desk"
-              : "Servidor local de desenvolvimento"}
-          </strong>
-          <p className="settings-hint">
-            {officialUrl
-              ? "A conexão é configurada automaticamente. Você não precisa informar um endereço."
-              : "O serviço oficial será incorporado ao build pelo responsável pela distribuição."}
-          </p>
-        </div>
-
-        {officialUrl && serverUrl !== officialUrl && (
-          <button
-            className="secondary-button"
-            type="button"
-            onClick={() => setServerUrl(officialUrl)}
-          >
-            Usar serviço oficial do Coffee Desk
-          </button>
-        )}
-        <p className="settings-hint">
-          Servidores externos exigem WSS. Alterar o servidor encerra a sessão
-          atual; o histórico permanece separado por servidor.
-        </p>
-        <details className="settings-advanced-server">
-          <summary>Servidor personalizado (avançado)</summary>
-          <label className="settings-label">
-            Servidor de sinalização
-            <input
-              aria-label="Servidor de sinalização"
-              value={serverUrl}
-              onChange={(e) => setServerUrl(e.target.value)}
-              placeholder="wss://seu-servidor/ws"
-            />
-          </label>
-        </details>
         {/* Opção: Acesso Não Supervisionado */}
         <div
           style={{

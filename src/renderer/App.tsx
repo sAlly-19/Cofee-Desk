@@ -1,3 +1,5 @@
+import { useFavorites } from "./hooks/useFavorites";
+import { FavoritesModal } from "./components/modals/FavoritesModal";
 import { ReportDeviceModal } from "./components/modals/ReportDeviceModal";
 import { useState, useCallback, useRef, useEffect } from "react";
 import { ElectronAPI } from "@main/preload";
@@ -34,7 +36,7 @@ export default function App(): JSX.Element {
   const { showToast } = useModal();
 
   // Navegação da sidebar e feedback
-  const [activeNav, setActiveNav] = useState<NavItemKey>("identity");
+  const [activeNav, setActiveNav] = useState<NavItemKey>("remote");
   const [isCopied, setIsCopied] = useState(false);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
@@ -50,6 +52,8 @@ export default function App(): JSX.Element {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showAllRecentModal, setShowAllRecentModal] = useState(false);
+  const [showFavorites, setShowFavorites] = useState(false);
+  const { favorites, toggleFavorite, renameFavorite } = useFavorites();
   const [selectedSessionOptions, setSelectedSessionOptions] =
     useState<RecentSession | null>(null);
 
@@ -171,27 +175,15 @@ export default function App(): JSX.Element {
   // Navegação da sidebar
   const handleNavClick = (nav: NavItemKey) => {
     setActiveNav(nav);
-    if (nav === "identity") {
-      remoteSectionRef.current?.closest("main")?.scrollTo({
-        top: 0,
-        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
-          ? "auto"
-          : "smooth",
-      });
-    } else if (nav === "remote") {
+    if (nav === "remote") {
       remoteSectionRef.current?.scrollIntoView({
         behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
           ? "auto"
           : "smooth",
         block: "center",
       });
-    } else if (nav === "recent") {
-      recentSectionRef.current?.scrollIntoView({
-        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
-          ? "auto"
-          : "smooth",
-        block: "center",
-      });
+    } else if (nav === "favorites") {
+      setShowFavorites(true);
     } else if (nav === "settings") {
       setFocusPassword(false);
       setShowSettingsModal(true);
@@ -255,7 +247,15 @@ export default function App(): JSX.Element {
         <main className={view === "home" ? "app-main is-home" : "app-main"}>
           {serverError && (
             <div role="alert" className="server-alert">
-              <span>{serverError}</span><button className="text-button" onClick={()=>window.dispatchEvent(new Event('server-changed'))}>Reconectar</button>
+              <span>{serverError}</span>
+              <button
+                className="text-button"
+                onClick={() =>
+                  window.dispatchEvent(new Event("server-changed"))
+                }
+              >
+                Reconectar
+              </button>
             </div>
           )}
           {view === "home" ? (
@@ -338,6 +338,17 @@ export default function App(): JSX.Element {
         onOpenOptions={setSelectedSessionOptions}
       />
 
+      <FavoritesModal
+        isOpen={showFavorites}
+        onClose={() => {
+          setShowFavorites(false);
+          setActiveNav("remote");
+        }}
+        favorites={favorites}
+        onConnect={handleConnectWithId}
+        onOptions={setSelectedSessionOptions}
+        onRemove={toggleFavorite}
+      />
       <ReportDeviceModal
         targetId={reportTarget}
         onClose={() => setReportTarget(null)}
@@ -348,9 +359,32 @@ export default function App(): JSX.Element {
         onClose={() => setSelectedSessionOptions(null)}
         onConnectDirect={handleConnectWithId}
         onConnectWithPassword={handleConnectWithId}
-        onRename={renameSession}
+        onRename={(remoteId, name) => {
+          const recent = recentSessions.find((s) => s.remoteId === remoteId);
+          if (recent) renameSession(recent.id, name);
+          else
+            showToast({
+              type: "success",
+              message: "Nome da máquina atualizado!",
+            });
+          renameFavorite(remoteId, name);
+        }}
+        isFavorite={
+          !!selectedSessionOptions &&
+          favorites.some((s) => s.remoteId === selectedSessionOptions.remoteId)
+        }
+        onToggleFavorite={toggleFavorite}
+        canDeleteFromHistory={
+          !!selectedSessionOptions &&
+          recentSessions.some(
+            (s) => s.remoteId === selectedSessionOptions.remoteId,
+          )
+        }
         onReport={setReportTarget}
-        onDelete={deleteSession}
+        onDelete={(remoteId) => {
+          const recent = recentSessions.find((s) => s.remoteId === remoteId);
+          if (recent) deleteSession(recent.id);
+        }}
       />
     </div>
   );
