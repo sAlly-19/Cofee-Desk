@@ -2,6 +2,8 @@
 
 Atualizado em 13/11/2026. O trabalho foi retomado nesta mesma máquina, sem push ou deploy. O checkpoint anterior é `18cb845`.
 
+Incidente posterior: o executável falhou no aceite entre duas máquinas porque o servidor hospedado ainda usa a confirmação anterior. Correção e implantação necessária em [INCIDENT-ACCEPT-CONFIRMATION.md](docs/INCIDENT-ACCEPT-CONFIRMATION.md). Não foi feito deploy.
+
 Documentação consolidada: [sessões, verificações, atualização e recuperação](docs/RELIABILITY-AND-UPDATES.md).
 
 **Estado: implementação integrada em desenvolvimento; não é uma release liberada.** Não foram gerados instaladores, publicadas releases, alterado o banco de produção ou feito deploy do servidor nesta etapa. A versão do pacote permanece 1.0.1; decidir a próxima versão antes da futura publicação.
@@ -82,7 +84,7 @@ Resultados da última execução disponível nesta máquina:
 | `npm run test:admin` | 21 verificações do navegador e confirmação final de persistência/notificação passaram |
 | `npm run test:hosting` | 31 verificações passaram, em ambiente local isolado |
 | `npm run test:client-config` | 11 verificações passaram |
-| `npm run test:reliability` | 39 verificações passaram |
+| `npm run test:reliability` | 43 verificações passaram, incluindo compatibilidade de aceite |
 | `npm run test:update-ui` | 18 verificações do modal/hook em Electron passaram |
 | `npm run test:history` | 9 verificações passaram, usando Electron e armazenamento reais |
 | `npm run test:recovery` | 12 verificações passaram, usando PostgreSQL real isolado |

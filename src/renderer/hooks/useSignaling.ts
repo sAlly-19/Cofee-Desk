@@ -1,3 +1,7 @@
+import {
+  supportsSessionConfirmation,
+  SERVER_UPGRADE_MESSAGE,
+} from "../../shared/signalingCompatibility";
 import type { ConnectionDiagnostic } from "../../shared/session";
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { ServerStatus } from "../types/app";
@@ -130,6 +134,19 @@ export function useSignaling({
             if (msg.type === "registered") {
               if (msg.version !== 2 || !/^\d{3}-\d{3}-\d{3}$/.test(msg.id))
                 return;
+              if (!supportsSessionConfirmation(msg)) {
+                terminal = true;
+                setDiagnostic({
+                  stage: "authentication",
+                  code: "SERVER_UPGRADE_REQUIRED",
+                  state: "failed",
+                });
+                setServerError(SERVER_UPGRADE_MESSAGE);
+                setIsRegistered(false);
+                setServerStatus("disconnected");
+                ws.close(1000, "Server capability required");
+                return;
+              }
               setDiagnostic({
                 stage: "authentication",
                 code: "REGISTERED",

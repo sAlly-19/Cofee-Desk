@@ -292,6 +292,7 @@ export async function startServer(config: Config) {
           nonce: client.challenge,
           audience: config.publicOrigin,
           version: 2,
+          capabilities: [PERMISSION_CAPABILITY],
         });
         return;
       }
@@ -352,7 +353,12 @@ export async function startServer(config: Config) {
         await pool.query("UPDATE devices SET last_seen=now() WHERE id=$1", [
           device.id,
         ]);
-        send(client, { type: "registered", id: device.id, version: 2 });
+        send(client, {
+          type: "registered",
+          id: device.id,
+          version: 2,
+          capabilities: [PERMISSION_CAPABILITY],
+        });
         return;
       }
       error(client, "UPGRADE_REQUIRED", "Atualize o Coffee Desk para 1.0.1");

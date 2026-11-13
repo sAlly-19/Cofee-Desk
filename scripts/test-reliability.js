@@ -109,6 +109,42 @@ function fixture(options = {}) {
 }
 async function run() {
   const {
+    supportsSessionConfirmation,
+    validAcceptance,
+  } = require("../dist-electron/shared/signalingCompatibility");
+  check(
+    "Old server registration is rejected before calls",
+    !supportsSessionConfirmation({ version: 2, id: "111-222-333" }),
+  );
+  check(
+    "New server confirmation capability accepted",
+    supportsSessionConfirmation({ capabilities: ["session-permissions-v1"] }),
+  );
+  check(
+    "Old acceptance without role or permissions is rejected",
+    !validAcceptance({ type: "call-accepted", callId: "fixture" }, "client"),
+  );
+  check(
+    "Host and viewer require their matching authoritative acknowledgment",
+    validAcceptance(
+      {
+        role: "host",
+        sourceKind: "screen",
+        permissions: { control: true, clipboard: true, files: true },
+      },
+      "host",
+    ) &&
+      !validAcceptance(
+        {
+          role: "client",
+          sourceKind: "screen",
+          permissions: { control: true, clipboard: true, files: true },
+        },
+        "host",
+      ),
+  );
+
+  const {
     validRemoteKeyboard,
     validRemoteMouse,
   } = require("../dist-electron/shared/remoteInput");

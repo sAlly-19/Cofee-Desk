@@ -1,3 +1,7 @@
+import {
+  validAcceptance,
+  SERVER_UPGRADE_MESSAGE,
+} from "../../shared/signalingCompatibility";
 import { useState, useRef, useCallback, useEffect } from "react";
 import type {
   View,
@@ -58,6 +62,9 @@ export function useCallManager({
     entry: SessionHistoryEntry;
   } | null>(null);
   const timeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const confirmationTimeout = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const persist = useCallback(
     (entry: SessionHistoryEntry) => {
       const scope = localStorage.getItem("coffee_desk_server_url");
@@ -108,6 +115,8 @@ export function useCallManager({
         current.current = null;
       }
       if (timeout.current) clearTimeout(timeout.current);
+      if (confirmationTimeout.current)
+        clearTimeout(confirmationTimeout.current);
       void window.electronAPI.setSessionPending(false).catch(() => {});
       void window.electronAPI.confirmSession(null).catch(() => {});
       void window.electronAPI.toggleInputControl(false).catch(() => {});
@@ -191,7 +200,25 @@ export function useCallManager({
       sourceId?: string,
     ) => {
       if (answering || current.current?.role !== "host") return;
+      const pending = current.current;
       setAnswering(true);
+      if (confirmationTimeout.current)
+        clearTimeout(confirmationTimeout.current);
+      confirmationTimeout.current = setTimeout(() => {
+        if (current.current !== pending || pending.entry.result !== "calling")
+          return;
+        sendWsMessage({ type: "disconnect", targetId: id });
+        finish("failed", "ACCEPT_TIMEOUT");
+        setConnectionStatus("error");
+        setDiagnostic({
+          stage: "call",
+          code: "ACCEPT_TIMEOUT",
+          state: "failed",
+        });
+        setConnectionError(
+          "O servidor não confirmou o aceite a tempo. Verifique se o serviço foi atualizado e tente novamente.",
+        );
+      }, 12000);
       setConnectionError(null);
       try {
         const sources = await window.electronAPI.getDesktopSources();
@@ -218,13 +245,15 @@ export function useCallManager({
         });
         setDiagnostic({ stage: "call", code: "CONFIRMING", state: "waiting" });
       } catch {
+        if (confirmationTimeout.current)
+          clearTimeout(confirmationTimeout.current);
         setAnswering(false);
         setConnectionError(
           "Não foi possível preparar a captura. Escolha uma fonte disponível e tente novamente.",
         );
       }
     },
-    [answering, sendWsMessage],
+    [answering, sendWsMessage, finish],
   );
   const rejectIncomingCall = useCallback(
     (id: string, reason?: string) => {
@@ -319,20 +348,38 @@ export function useCallManager({
       }
       if (msg.type === "call-accepted") {
         const c = current.current;
-        if (
-          !c ||
-          c.callId !== msg.callId ||
-          c.role !== msg.role ||
-          !validPermissions(msg.permissions)
-        )
+        if (!c || c.callId !== msg.callId) return;
+        if (!validAcceptance(msg, c.role)) {
+          sendWsMessage({ type: "disconnect", targetId: c.remoteId });
+          finish("failed", "SERVER_UPGRADE_REQUIRED");
+          setConnectionStatus("error");
+          setDiagnostic({
+            stage: "call",
+            code: "SERVER_UPGRADE_REQUIRED",
+            state: "failed",
+          });
+          setConnectionError(SERVER_UPGRADE_MESSAGE);
           return;
+        }
         if (timeout.current) clearTimeout(timeout.current);
-        await window.electronAPI.confirmSession({
-          callId: c.callId!,
-          role: c.role,
-          permissions: msg.permissions,
-        });
+        try {
+          await window.electronAPI.confirmSession({
+            callId: c.callId!,
+            role: c.role,
+            permissions: msg.permissions,
+          });
+        } catch {
+          sendWsMessage({ type: "disconnect", targetId: c.remoteId });
+          finish("failed", "NATIVE_SESSION_FAILED");
+          setConnectionStatus("error");
+          setConnectionError(
+            "Não foi possível autorizar a sessão neste computador. Reinicie o aplicativo e tente novamente.",
+          );
+          return;
+        }
         if (current.current !== c) return;
+        if (confirmationTimeout.current)
+          clearTimeout(confirmationTimeout.current);
         setPermissions(msg.permissions);
         setSourceKind(msg.sourceKind);
         setSessionRole(c.role);
@@ -416,7 +463,14 @@ export function useCallManager({
         );
       }
     },
-    [begin, acceptIncomingCall, persist, onCallEstablished, finish],
+    [
+      begin,
+      acceptIncomingCall,
+      persist,
+      onCallEstablished,
+      finish,
+      sendWsMessage,
+    ],
   );
   useEffect(() => {
     if (!incomingCall) return;
@@ -433,6 +487,8 @@ export function useCallManager({
   }, [incomingCall, rejectIncomingCall]);
   useEffect(
     () => () => {
+      if (confirmationTimeout.current)
+        clearTimeout(confirmationTimeout.current);
       if (timeout.current) clearTimeout(timeout.current);
       void window.electronAPI.confirmSession(null).catch(() => {});
     },

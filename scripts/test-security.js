@@ -60,6 +60,10 @@ class Device {
       .toString("base64");
     this.send({ type: "authenticate", signature: this.signature });
     const msg = await this.take("registered");
+    assert.ok(
+      msg.capabilities?.includes("session-permissions-v1"),
+      "Server must advertise permission confirmation",
+    );
     this.id = msg.id;
     return this;
   }
