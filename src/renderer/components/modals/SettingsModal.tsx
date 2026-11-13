@@ -1,7 +1,13 @@
 import { PermissionsFields } from "../session/PermissionsFields";
 import type { SessionPermissions } from "../../../shared/session";
 import { useEffect, useRef, useState } from "react";
-import { Settings, Trash2, KeyRound } from "lucide-react";
+import {
+  Settings,
+  Trash2,
+  KeyRound,
+  RefreshCw,
+  ChevronRight,
+} from "lucide-react";
 import { Modal } from "../ui/Modal";
 
 interface SettingsModalProps {
@@ -132,8 +138,23 @@ export function SettingsModal({
             {saveError}
           </div>
         )}
-        <button className="secondary-button" onClick={onCheckUpdates}>
-          Verificar atualizações
+        <button
+          type="button"
+          className="settings-update-button"
+          onClick={onCheckUpdates}
+        >
+          <span className="settings-update-icon">
+            <RefreshCw size={20} aria-hidden="true" />
+          </span>
+          <span className="settings-update-copy">
+            <strong>Verificar atualizações</strong>
+            <span>Mantenha seu Coffee Desk em dia.</span>
+          </span>
+          <ChevronRight
+            size={20}
+            aria-hidden="true"
+            className="settings-update-arrow"
+          />
         </button>
         {/* Opção: Acesso Não Supervisionado */}
         <div
@@ -163,12 +184,6 @@ export function SettingsModal({
               onChange={(e) => {
                 const val = e.target.checked;
                 setUnattendedEnabled(val);
-              }}
-              style={{
-                width: 18,
-                height: 18,
-                cursor: "pointer",
-                accentColor: "var(--accent-primary, #C77B3B)",
               }}
             />
           </div>

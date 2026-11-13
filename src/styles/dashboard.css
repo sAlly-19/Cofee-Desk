@@ -1083,14 +1083,28 @@
 
 .modal-panel input[type="checkbox"] {
   appearance: none;
-  display: grid;
+  -webkit-appearance: none;
+  display: inline-grid;
   place-items: center;
+  width: 21px;
+  height: 21px;
+  min-width: 21px;
+  flex: 0 0 21px;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
   background: var(--bg-input);
   border: 1px solid var(--border-warm);
-  border-radius: 4px;
+  border-radius: 6px;
 }
 .modal-panel input[type="checkbox"]:checked {
-  background: var(--accent-primary);
+  background: linear-gradient(145deg, #df995a, #ac632e);
+  border-color: #db985d;
+  box-shadow: 0 2px 8px #0003;
 }
 .modal-panel input[type="checkbox"]:checked::after {
   content: "";
@@ -1435,5 +1449,103 @@ button:disabled {
   }
   .session-access-button {
     top: 102px;
+  }
+}
+
+/* Settings actions and permission controls */
+.settings-update-button {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 78px;
+  padding: 16px 18px;
+  border: 1px solid #9f663b70;
+  border-radius: 13px;
+  background: linear-gradient(120deg, #6f3f242e, #2a1b1455);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease;
+}
+.settings-update-button:hover {
+  background-color: #a3632520;
+  border-color: #cb8c54;
+}
+.settings-update-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 42px;
+  height: 42px;
+  border-radius: 11px;
+  background: #bd773124;
+  color: var(--accent-soft, #e5a96d);
+}
+.settings-update-copy {
+  display: grid;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+}
+.settings-update-copy strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+.settings-update-copy > span {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.settings-update-arrow {
+  flex-shrink: 0;
+  color: var(--accent-soft, #e5a96d);
+}
+.permission-fields {
+  gap: 5px;
+  padding: 12px;
+}
+.permission-fields legend {
+  padding: 0 7px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.permission-fields label {
+  min-height: 42px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  gap: 12px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.permission-fields label:hover {
+  background: #bc783214;
+}
+.permission-fields label:has(input:checked) {
+  background: #bc783214;
+}
+.permission-fields label:has(input:disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.modal-panel input[type="checkbox"]:hover:not(:disabled) {
+  border-color: var(--accent-soft, #e5a96d);
+}
+.modal-panel input[type="checkbox"]:focus-visible,
+.settings-update-button:focus-visible {
+  outline: 2px solid var(--accent-soft, #e5a96d);
+  outline-offset: 4px;
+}
+.modal-panel input[type="checkbox"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-update-button,
+  .modal-panel input[type="checkbox"] {
+    transition: none;
   }
 }

@@ -2,7 +2,6 @@ import type { RefObject } from "react";
 import { RemoteConnectCard } from "./RemoteConnectCard";
 import { IdentityCard } from "./IdentityCard";
 import { RecentSessionsCard } from "./RecentSessionsCard";
-import { StatusIndicator } from "./StatusIndicator";
 import type {
   ConnectionStatus,
   ServerStatus,
@@ -32,11 +31,7 @@ export function DashboardHome(props: DashboardHomeProps) {
     <div className="dashboard-home">
       <div className="dashboard-content">
         <header className="dashboard-heading">
-          <StatusIndicator
-            status={props.serverStatus}
-            className="availability"
-          />
-          <h1>Sua mesa. Em qualquer lugar.</h1>
+          <h1>Sua próxima conexão começa aqui.</h1>
           <p>Conecte-se a outro computador com segurança.</p>
         </header>
         <div className="connection-grid">
