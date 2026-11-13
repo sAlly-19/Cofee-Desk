@@ -114,6 +114,7 @@ async function run() {
       identities: {},
     }),
   );
+  require("../dist-electron/main/fileClipboard").registerFileClipboard();
   const client = new BrowserWindow({
     width: 1440,
     height: 900,

@@ -43,6 +43,8 @@ export function formatSpeed(bytesPerSec?: number): string {
 }
 
 interface IncomingTransfer {
+  clipboardBatch?: string;
+  clipboardCount?: number;
   fileId: string;
   fileName: string;
   fileSize: number;
@@ -57,6 +59,7 @@ interface IncomingTransfer {
 export function useFileTransfer(
   dataChannel: RTCDataChannel | null,
   allowed: boolean,
+  clipboardAllowed = false,
 ) {
   const allowedRef = useRef(allowed);
   allowedRef.current = allowed;
@@ -70,6 +73,9 @@ export function useFileTransfer(
   const activeSendAbortRef = useRef<{ [fileId: string]: boolean }>({});
 
   // Armazenamento de arquivos recebidos em streaming
+  const clipboardPolicy = useRef(clipboardAllowed);
+  clipboardPolicy.current = clipboardAllowed;
+  const clipboardResults = useRef<{ batch: string; path: string }[]>([]);
   const incomingTransfersRef = useRef<Map<string, IncomingTransfer>>(new Map());
 
   useEffect(() => {
@@ -143,6 +149,17 @@ export function useFileTransfer(
               fileName,
               fileSize,
               mimeType: mimeType || "application/octet-stream",
+              clipboardBatch:
+                typeof msg.clipboardBatch === "string" &&
+                /^[a-f0-9]{64}$/.test(msg.clipboardBatch)
+                  ? msg.clipboardBatch
+                  : undefined,
+              clipboardCount:
+                Number.isInteger(msg.clipboardCount) &&
+                msg.clipboardCount >= 1 &&
+                msg.clipboardCount <= 20
+                  ? msg.clipboardCount
+                  : undefined,
               totalChunks,
               receivedChunks: new Map(),
               startTime: Date.now(),
@@ -161,7 +178,7 @@ export function useFileTransfer(
                 transferredBytes: 0,
                 speedBytesPerSec: 0,
               },
-              ...prev.filter((t) => t.fileId !== fileId).slice(0,199),
+              ...prev.filter((t) => t.fileId !== fileId).slice(0, 199),
             ]);
 
             showToast({
@@ -306,6 +323,38 @@ export function useFileTransfer(
               ),
             );
 
+            if (
+              incoming.clipboardBatch &&
+              incoming.clipboardCount &&
+              savedFilePath &&
+              clipboardPolicy.current &&
+              allowedRef.current
+            ) {
+              clipboardResults.current = [
+                ...clipboardResults.current,
+                { batch: incoming.clipboardBatch, path: savedFilePath },
+              ].slice(-20);
+              const paths = clipboardResults.current
+                .filter((e) => e.batch === incoming.clipboardBatch)
+                .map((e) => e.path);
+              if (paths.length === incoming.clipboardCount) {
+                try {
+                  await window.electronAPI.setReceivedFilesClipboard(paths);
+                  if (allowedRef.current && clipboardPolicy.current)
+                    showToast({
+                      type: "success",
+                      message:
+                        "Arquivos prontos para colar no Explorador (Ctrl+V). Os originais foram preservados.",
+                    });
+                } catch {
+                  showToast({
+                    type: "warning",
+                    message:
+                      "Arquivos recebidos, mas não foi possível preparar o clipboard.",
+                  });
+                }
+              }
+            }
             showToast({
               type: "success",
               title: "Arquivo Recebido!",
@@ -409,6 +458,12 @@ export function useFileTransfer(
         dataChannel.send(
           JSON.stringify({
             type: "file-meta",
+            clipboardBatch: (
+              file as File & { coffeeClipboard?: { batchId: string } }
+            ).coffeeClipboard?.batchId,
+            clipboardCount: (
+              file as File & { coffeeClipboard?: { count: number } }
+            ).coffeeClipboard?.count,
             fileId,
             fileName: file.name,
             fileSize: file.size,
@@ -550,6 +605,20 @@ export function useFileTransfer(
 
       const fileArray = Array.from(files);
       if (
+        [...sendQueueRef.current, ...fileArray].reduce(
+          (bytes, file) => bytes + file.size,
+          0,
+        ) >
+        64 * 1024 * 1024
+      ) {
+        showToast({
+          type: "warning",
+          message:
+            "A fila pode ter até 64 MB. Aguarde as transferências em andamento.",
+        });
+        return;
+      }
+      if (
         fileArray.length + sendQueueRef.current.length > 20 ||
         fileArray.some((f) => f.size > 32 * 1024 * 1024)
       ) {
@@ -572,7 +641,7 @@ export function useFileTransfer(
         speedBytesPerSec: 0,
       }));
 
-      setTransfers((prev) => [...newItems, ...prev].slice(0,200));
+      setTransfers((prev) => [...newItems, ...prev].slice(0, 200));
       sendQueueRef.current.push(...fileArray);
 
       processQueue();

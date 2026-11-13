@@ -57,6 +57,7 @@ export function useSessionClipboard({
         .readSessionClipboard()
         .then((text) => {
           if (
+            text === null ||
             !enabled.current ||
             !auto.current ||
             text === last.current ||
@@ -87,7 +88,7 @@ export function useSessionClipboard({
     read: () =>
       window.electronAPI
         .readSessionClipboard()
-        .then(setLocal)
+        .then((text) => setLocal(text ?? ""))
         .catch(() => setError("Não foi possível ler o clipboard.")),
     send: () => {
       if (enabled.current && dataChannel?.readyState === "open")

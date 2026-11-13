@@ -24,6 +24,7 @@ export function createMainWindow(): BrowserWindow {
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
+      backgroundThrottling: false,
       nodeIntegration: false,
       devTools: isDev,
     },
@@ -39,13 +40,6 @@ export function createMainWindow(): BrowserWindow {
   mainWindow.once("ready-to-show", () => {
     mainWindow?.show();
   });
-
-  // Garante exibição da janela
-  setTimeout(() => {
-    if (mainWindow && !mainWindow.isVisible() && !mainWindow.isMinimized()) {
-      mainWindow.show();
-    }
-  }, 2000);
 
   mainWindow.on("closed", () => {
     mainWindow = null;

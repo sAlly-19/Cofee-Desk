@@ -54,8 +54,16 @@ app.once("browser-window-created", (_event, win) => {
         const resumed = await api.getInputControlStatus();
         return { paused: paused.enabled, resumed: resumed.enabled, rendered: !!document.querySelector('.app-shell') };
       })()`);
+      await win.webContents.executeJavaScript(
+        "window.electronAPI.minimizeToTray()",
+      );
+      state.trayHidden = !win.isVisible() && !win.isDestroyed();
+      app.emit("second-instance");
+      state.trayRestored = win.isVisible();
       finish(
-        listeners.mouse === 1 &&
+        state.trayHidden &&
+          state.trayRestored &&
+          listeners.mouse === 1 &&
           listeners.keyboard === 1 &&
           state.paused === false &&
           state.resumed === false &&

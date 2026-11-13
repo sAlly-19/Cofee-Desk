@@ -46,7 +46,8 @@
     "database:backup": "node scripts/database-recovery.js backup",
     "database:restore": "node scripts/database-recovery.js restore",
     "test:history": "node scripts/test-history.js",
-    "test:update-ui": "node scripts/test-update-ui.js"
+    "test:update-ui": "node scripts/test-update-ui.js",
+    "test:file-clipboard": "node scripts/test-file-clipboard.js"
   },
   "dependencies": {
     "electron-squirrel-startup": "^1.0.1",

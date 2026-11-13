@@ -47,6 +47,8 @@ export function useWebRTCPeer({
     localStreamRef = useRef<MediaStream | null>(null),
     dataChannelRef = useRef<RTCDataChannel | null>(null),
     filesDataChannelRef = useRef<RTCDataChannel | null>(null);
+  const lastPointerSequence = useRef(0);
+  const pointerChannelRef = useRef<RTCDataChannel | null>(null);
   const ice = useRef<RTCIceCandidateInit[]>([]),
     policy = useRef(permissions),
     input = useRef(onRemoteInput),
@@ -60,6 +62,8 @@ export function useWebRTCPeer({
     pcRef.current?.close();
     pcRef.current = null;
     dataChannelRef.current = null;
+    pointerChannelRef.current = null;
+    lastPointerSequence.current = 0;
     filesDataChannelRef.current = null;
     ice.current = [];
     setIsSharing(false);
@@ -98,6 +102,36 @@ export function useWebRTCPeer({
     },
     [role],
   );
+  const wirePointer = useCallback(
+    (channel: RTCDataChannel) => {
+      pointerChannelRef.current = channel;
+      channel.onmessage = (event) => {
+        if (
+          role !== "host" ||
+          !policy.current.control ||
+          typeof event.data !== "string" ||
+          event.data.length > 1024
+        )
+          return;
+        try {
+          const m = JSON.parse(event.data);
+          if (
+            m.type === "mouse" &&
+            m.data?.type === "move" &&
+            validRemoteMouse(m.data) &&
+            Number.isSafeInteger(m.seq) &&
+            m.seq > lastPointerSequence.current
+          ) {
+            lastPointerSequence.current = m.seq;
+            input.current?.(m);
+          }
+        } catch {
+          /* Ignore invalid pointer packets. */
+        }
+      };
+    },
+    [role],
+  );
   const create = useCallback(() => {
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     pcRef.current = pc;
@@ -126,7 +160,9 @@ export function useWebRTCPeer({
       }
     };
     pc.ondatachannel = (e) => {
-      if (e.channel.label === "coffee-desk-control") wireControl(e.channel);
+      if (e.channel.label === "coffee-desk-pointer") wirePointer(e.channel);
+      else if (e.channel.label === "coffee-desk-control")
+        wireControl(e.channel);
       else if (e.channel.label === "coffee-desk-files") {
         filesDataChannelRef.current = e.channel;
         onFilesChannelReady?.(e.channel);
@@ -137,6 +173,7 @@ export function useWebRTCPeer({
     onSendSignalingMessage,
     onFilesChannelReady,
     remoteVideoRef,
+    wirePointer,
     wireControl,
   ]);
   const bindStream = useCallback(
@@ -198,6 +235,11 @@ export function useWebRTCPeer({
       wireControl(
         pc.createDataChannel("coffee-desk-control", { ordered: true }),
       );
+      const pointer = pc.createDataChannel("coffee-desk-pointer", {
+        ordered: false,
+        maxRetransmits: 0,
+      });
+      wirePointer(pointer);
       const files = pc.createDataChannel("coffee-desk-files", {
         ordered: true,
       });
@@ -223,6 +265,7 @@ export function useWebRTCPeer({
     }
   }, [
     create,
+    wirePointer,
     bindStream,
     wireControl,
     onFilesChannelReady,
@@ -391,6 +434,7 @@ export function useWebRTCPeer({
   return {
     pcRef,
     dataChannelRef,
+    pointerChannelRef,
     filesDataChannelRef,
     isSharing,
     isReceiving,

@@ -2,6 +2,7 @@ const {
   app,
   BrowserWindow,
   clipboard,
+  ClipboardItem,
   desktopCapturer,
   ipcMain,
 } = require("electron");
@@ -151,7 +152,9 @@ async function run() {
   require(
     path.join(root, "dist-electron/main/ipcHandlers.js"),
   ).registerIpcHandlers();
-  const remoteInputs = [];
+  const remoteInputs = [],
+    remoteMouse = [];
+  ipcMain.on("remote:input:mouse", (_event, data) => remoteMouse.push(data));
   ipcMain.on("remote:input:keyboard", (_event, data) =>
     remoteInputs.push(data),
   );
@@ -182,6 +185,10 @@ async function run() {
   require(
     path.join(root, "dist-electron/main/inputManager.js"),
   ).registerInputIpcHandlers();
+  // Two fixture windows share one OS clipboard; only the first emulates the copied-file source.
+  require("../dist-electron/main/fileClipboard").registerFileClipboard(
+    (id) => securityProfiles.get(id)?.startsWith("redesign-first") === true,
+  );
   const win = await create("redesign-first");
   if (process.argv.includes("--icons")) {
     const images = await js(win, async () => {
@@ -500,6 +507,77 @@ async function run() {
       "Keyboard crosses real WebRTC control channel",
       remoteInputs.some((data) => data.code === "F24"),
     );
+    await until(
+      win,
+      'window.__testChannels.some(c=>c.label==="coffee-desk-pointer"&&c.readyState==="open")',
+    );
+    check(
+      "Pointer channel uses unordered delivery without retransmits",
+      await js(
+        win,
+        '(()=>{const c=window.__testChannels.find(c=>c.label==="coffee-desk-pointer");return c.ordered===false&&c.maxRetransmits===0;})()',
+      ),
+    );
+    await js(peer, "window.electronAPI.toggleInputControl(false)");
+    const beforePointer = remoteMouse.length;
+    await js(win, () => {
+      const c = window.__testChannels.find(
+        (c) => c.label === "coffee-desk-pointer",
+      );
+      c.send(
+        JSON.stringify({
+          type: "mouse",
+          seq: 1,
+          data: { type: "move", normX: 0.5, normY: 0.5 },
+        }),
+      );
+      c.send(
+        JSON.stringify({
+          type: "mouse",
+          seq: 0,
+          data: { type: "move", normX: 0.4, normY: 0.4 },
+        }),
+      );
+    });
+    await wait(250);
+    check(
+      "Stale pointer packet discarded while native movement is paused",
+      remoteMouse.length === beforePointer + 1,
+    );
+    await js(peer, "window.electronAPI.toggleInputControl(true)");
+    check(
+      "Host does not render a live preview",
+      await js(peer, '!document.querySelector(".host-stream video")'),
+    );
+    check(
+      "Viewer receives monitor selector",
+      await until(
+        win,
+        'document.querySelectorAll(".session-monitor-picker option").length>1',
+      ),
+    );
+    await js(win, () => {
+      const select = document.querySelector(".session-monitor-picker select");
+      select.value = [...select.options].find((o) =>
+        o.value.startsWith("screen:"),
+      ).value;
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    check(
+      "Remote monitor switch requires host consent",
+      await until(
+        peer,
+        'document.body.textContent.includes("Trocar monitor compartilhado?")',
+      ),
+    );
+    await click(peer, "Manter atual");
+    check(
+      "Denied monitor request clears pending state",
+      await until(
+        win,
+        '!document.querySelector(".session-monitor-picker select").disabled',
+      ),
+    );
     const fixtureName = "coffee-desk-check-" + Date.now() + ".txt";
     await js(win, "window.transferFixtureName=" + JSON.stringify(fixtureName));
     await js(win, () => {
@@ -528,6 +606,29 @@ async function run() {
         fs.readFileSync(path.join(out, "downloads", fixtureName), "utf8") ===
           "Coffee Desk real WebRTC file check",
     );
+    const copyName = "coffee-copy-" + Date.now() + ".txt",
+      copyPath = path.join(out, copyName);
+    fs.writeFileSync(copyPath, "Real native file clipboard across WebRTC");
+    await clipboard.write([
+      new ClipboardItem({
+        "text/uri-list": require("node:url").pathToFileURL(copyPath).href,
+      }),
+    ]);
+    check(
+      "Copied file transfers automatically over WebRTC",
+      await until(
+        peer,
+        'document.body.textContent.includes("Arquivos prontos para colar")',
+        15000,
+      ),
+    );
+    check(
+      "Copied file received with matching content",
+      fs.existsSync(path.join(out, "downloads", copyName)) &&
+        fs.readFileSync(path.join(out, "downloads", copyName), "utf8") ===
+          "Real native file clipboard across WebRTC",
+    );
+    await clipboard.writeText("Coffee Desk text clipboard fixture");
     await js(win, () =>
       document
         .querySelector('button[title="Área de Transferência Compartilhada"]')
@@ -777,7 +878,7 @@ async function run() {
       "Actual window can replace monitor capture",
       await until(
         peer,
-        '[...document.querySelectorAll("video")].some(v=>v.srcObject?.getVideoTracks()[0]?.getSettings().displaySurface==="window"&&v.srcObject.getVideoTracks()[0].readyState==="live")&&!document.querySelector(".modal-panel")',
+        'window.electronAPI.getCaptureSelection().then(s=>s?.kind==="window"&&s.active&&!document.querySelector(".modal-panel"))',
       ),
     );
     check(

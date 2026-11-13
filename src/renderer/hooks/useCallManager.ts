@@ -343,6 +343,8 @@ export function useCallManager({
         ) {
           const settings = await window.electronAPI.getSecuritySettings();
           await acceptIncomingCall(msg.fromId, settings.unattendedPermissions);
+        } else {
+          void window.electronAPI.notifyIncomingCall().catch(() => {});
         }
         return;
       }

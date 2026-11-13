@@ -61,6 +61,7 @@ export function RemoteStreamView({
   // Hook WebRTC
   const {
     dataChannelRef,
+    pointerChannelRef,
     isReceiving,
     isSharing,
     stats,
@@ -96,6 +97,7 @@ export function RemoteStreamView({
   } = useRemoteInputCapture({
     role,
     allowed: permissions.control,
+    pointerChannelRef,
     dataChannelRef,
     containerRef,
   });

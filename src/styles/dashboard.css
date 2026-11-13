@@ -1549,3 +1549,44 @@ button:disabled {
     transition: none;
   }
 }
+
+.session-monitor-picker {
+  position: absolute;
+  z-index: 25;
+  top: 58px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: #21150feb;
+  border: 1px solid #7f5638;
+  border-radius: 10px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.session-monitor-picker select {
+  background: #1a100c;
+  color: var(--text-primary);
+  border: 1px solid #7f5638;
+  border-radius: 7px;
+  padding: 7px 10px;
+  min-width: 160px;
+}
+.monitor-switch-consent {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 12px;
+  border: 1px solid var(--border-warm);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.host-sharing-note {
+  max-width: 400px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.6;
+}

@@ -11,6 +11,7 @@ import {
 interface UseRemoteInputCaptureProps {
   role: "host" | "client";
   allowed: boolean;
+  pointerChannelRef?: RefObject<RTCDataChannel | null>;
   dataChannelRef: RefObject<RTCDataChannel | null>;
   containerRef: RefObject<HTMLDivElement | null>;
 }
@@ -37,10 +38,12 @@ export function useRemoteInputCapture({
   role,
   allowed,
   dataChannelRef,
+  pointerChannelRef,
   containerRef,
 }: UseRemoteInputCaptureProps) {
   const [isKeyboardFocused, setIsKeyboardFocused] = useState(false);
   const [hostControlEnabled, setHostControlEnabled] = useState(true);
+  const pointerSequence = useRef(0);
   const lastMoveSentRef = useRef<number>(0);
 
   // Mapeamento preciso de coordenadas compensando letterbox / pillarbox (object-fit: contain)
@@ -60,7 +63,10 @@ export function useRemoteInputCapture({
   // Movimento suave com throttling a ~60fps
   const handleMouseMove = (e: MouseEvent<HTMLVideoElement>) => {
     if (role === "host" || !allowed) return;
-    const dc = dataChannelRef.current;
+    const dc =
+      pointerChannelRef?.current?.readyState === "open"
+        ? pointerChannelRef.current
+        : dataChannelRef.current;
     if (!dc || dc.readyState !== "open") return;
 
     const now = performance.now();
@@ -74,6 +80,7 @@ export function useRemoteInputCapture({
     dc.send(
       JSON.stringify({
         type: "mouse",
+        seq: ++pointerSequence.current,
         data: {
           type: "move",
           x: pixelX,

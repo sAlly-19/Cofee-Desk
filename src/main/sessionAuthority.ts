@@ -107,6 +107,7 @@ export function registerSessionAuthority() {
     assertTrusted(event);
     if (!hasPermission(event.sender.id, "clipboard"))
       throw new Error("Clipboard não autorizado");
+    if (await clipboard.has("text/uri-list")) return null;
     const text = await clipboard.readText();
     if (!hasPermission(event.sender.id, "clipboard"))
       throw new Error("Clipboard revogado");

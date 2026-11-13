@@ -28,6 +28,7 @@ jobs:
       - run: npm run build
       - run: npm run test:security
       - run: npm run test:reliability
+      - run: npm run test:file-clipboard
       - run: npm run test:history
       - run: npm run test:update-ui
       - run: npm run test:recovery

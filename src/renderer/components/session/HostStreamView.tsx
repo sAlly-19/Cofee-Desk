@@ -2,7 +2,6 @@ import type { RefObject } from "react";
 export function HostStreamView({
   remoteId,
   isSharing,
-  localVideoRef,
   onSwitchToRealScreen,
 }: {
   remoteId: string;
@@ -20,22 +19,9 @@ export function HostStreamView({
       <p>
         Computador remoto: <strong>{remoteId}</strong>
       </p>
-      <video
-        ref={(el) => {
-          (localVideoRef as { current: HTMLVideoElement | null }).current = el;
-        }}
-        autoPlay
-        playsInline
-        muted
-        style={{
-          width: 340,
-          maxWidth: "100%",
-          height: 190,
-          objectFit: "contain",
-          background: "#000",
-          borderRadius: 12,
-        }}
-      />
+      <p className="host-sharing-note">
+        A transmissão está ativa sem pré-visualização neste computador.
+      </p>
       {!isSharing && (
         <button className="primary-button" onClick={onSwitchToRealScreen}>
           Tentar captura novamente

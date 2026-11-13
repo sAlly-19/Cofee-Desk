@@ -16,6 +16,28 @@ import type {
 
 // Permite que o renderer invoque o main de forma tipada e segura
 const electronAPI = {
+  notifyIncomingCall: () =>
+    ipcRenderer.invoke("window:incoming") as Promise<boolean>,
+  getCaptureSelection: () =>
+    ipcRenderer.invoke("desktop:selection") as Promise<{
+      sourceId: string;
+      kind: "screen" | "window";
+      active: boolean;
+    } | null>,
+  readClipboardFiles: () =>
+    ipcRenderer.invoke("clipboard:files") as Promise<{
+      revision: string;
+      files: { token: string; name: string; size: number }[];
+    } | null>,
+  readClipboardFileChunk: (token: string, offset: number) =>
+    ipcRenderer.invoke(
+      "clipboard:file-chunk",
+      token,
+      offset,
+    ) as Promise<string>,
+  setReceivedFilesClipboard: (files: string[]) =>
+    ipcRenderer.invoke("clipboard:received-files", files) as Promise<boolean>,
+  minimizeToTray: () => ipcRenderer.invoke("window:tray") as Promise<boolean>,
   confirmCaptureReady: () =>
     ipcRenderer.invoke("capture:ready") as Promise<boolean>,
   onCaptureUnavailable: (callback: () => void) => {
@@ -45,7 +67,7 @@ const electronAPI = {
   setSessionPending: (value: boolean) =>
     ipcRenderer.invoke("session:pending", value),
   readSessionClipboard: () =>
-    ipcRenderer.invoke("session:clipboard-read") as Promise<string>,
+    ipcRenderer.invoke("session:clipboard-read") as Promise<string | null>,
   applySessionClipboard: (text: string) =>
     ipcRenderer.invoke("session:clipboard-write", text) as Promise<boolean>,
   confirmSession: (

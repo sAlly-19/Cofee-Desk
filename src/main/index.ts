@@ -1,3 +1,5 @@
+import { registerFileClipboard } from "./fileClipboard";
+import { registerTray } from "./trayManager";
 import { registerUpdater } from "./updater";
 import { registerSessionAuthority } from "./sessionAuthority";
 import { registerHistoryHandlers } from "./historyManager";
@@ -41,6 +43,8 @@ if (!gotTheLock) {
     if (BrowserWindow.getAllWindows().length > 0) {
       const win = BrowserWindow.getAllWindows()[0];
       if (win.isMinimized()) win.restore();
+      win.setSkipTaskbar(false);
+      win.show();
       win.focus();
     }
   });
@@ -59,6 +63,7 @@ app.whenReady().then(() => {
 
   // Registra handlers de IPC gerais
   registerIpcHandlers();
+  registerFileClipboard();
 
   // Registra handlers de conexão remota
   registerConnectionIpcHandlers();
@@ -75,6 +80,7 @@ app.whenReady().then(() => {
   // Cria janela principal
   const mainWindow = createMainWindow();
   registerUpdater(mainWindow);
+  registerTray(mainWindow);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

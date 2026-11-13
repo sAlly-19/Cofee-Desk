@@ -1,3 +1,5 @@
+import { useRemoteMonitors } from "../../hooks/useRemoteMonitors";
+import { useClipboardFiles } from "../../hooks/useClipboardFiles";
 import { useSessionClipboard } from "../../hooks/useSessionClipboard";
 import type { SessionPermissions } from "../../../shared/session";
 import { SourcePicker } from "./SourcePicker";
@@ -52,6 +54,17 @@ export function ActiveSessionContainer({
   const [filesDataChannel, setFilesDataChannel] =
     useState<RTCDataChannel | null>(null);
 
+  const monitors = useRemoteMonitors(filesDataChannel, role, async (id) => {
+    await window.electronAPI.startDesktopStream(id);
+    await onUpdatePermissions(
+      {
+        ...permissions,
+        control: sourceKind === "screen" && permissions.control,
+      },
+      "screen",
+    );
+    window.dispatchEvent(new Event("capture-source-changed"));
+  });
   const clipboard = useSessionClipboard({
     isConnected: true,
     dataChannel: filesDataChannel,
@@ -66,8 +79,20 @@ export function ActiveSessionContainer({
     cancelTransfer,
     removeTransfer,
     clearCompleted,
-  } = useFileTransfer(filesDataChannel, permissions.files);
+  } = useFileTransfer(
+    filesDataChannel,
+    permissions.files,
+    permissions.clipboard && clipboard.automatic,
+  );
 
+  useClipboardFiles(
+    filesDataChannel,
+    permissions.files &&
+      permissions.clipboard &&
+      clipboard.automatic &&
+      !isSending,
+    sendFiles,
+  );
   useEffect(() => {
     if (activeDrawer && !permissions[activeDrawer]) setActiveDrawer(null);
   }, [permissions, activeDrawer]);
@@ -88,6 +113,27 @@ export function ActiveSessionContainer({
         backgroundColor: "#040201",
       }}
     >
+      {role === "client" && (
+        <label className="session-monitor-picker">
+          Monitor
+          <select
+            aria-label="Monitor remoto"
+            disabled={monitors.pending || !monitors.monitors.length}
+            value={monitors.monitors.find((m) => m.selected)?.id || ""}
+            onChange={(e) => monitors.request(e.target.value)}
+          >
+            <option value="">Escolha um monitor</option>
+            {monitors.monitors.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+          {monitors.pending && (
+            <small role="status">Aguardando anfitrião…</small>
+          )}
+        </label>
+      )}
       {role === "host" && (
         <button
           className="session-access-button secondary-button"
@@ -102,6 +148,15 @@ export function ActiveSessionContainer({
         title="Tela e permissões"
         subtitle="Você pode revogar recursos a qualquer momento."
       >
+        <label className="monitor-switch-consent">
+          <input
+            type="checkbox"
+            checked={monitors.allowSwitch}
+            onChange={(e) => monitors.setAllowSwitch(e.target.checked)}
+          />
+          Permitir que o computador remoto alterne entre meus monitores nesta
+          sessão
+        </label>
         <PermissionsFields
           value={permissions}
           windowOnly={sourceKind === "window"}

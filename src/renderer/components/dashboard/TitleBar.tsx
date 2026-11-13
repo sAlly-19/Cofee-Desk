@@ -1,4 +1,4 @@
-import { Minus, Square, X } from "lucide-react";
+import { Minus, Square, X, PanelBottomClose } from "lucide-react";
 import type { ServerStatus } from "../../types/app";
 import { APP_VERSION } from "../../branding";
 export function TitleBar({
@@ -18,6 +18,13 @@ export function TitleBar({
         v{APP_VERSION} · P2P
       </span>
       <div className="window-controls app-no-drag">
+        <button
+          onClick={() => void window.electronAPI.minimizeToTray()}
+          aria-label="Enviar para bandeja"
+          title="Continuar em segundo plano"
+        >
+          <PanelBottomClose size={18} strokeWidth={1.4} />
+        </button>
         <button onClick={onMinimize} aria-label="Minimizar">
           <Minus size={19} strokeWidth={1.4} />
         </button>

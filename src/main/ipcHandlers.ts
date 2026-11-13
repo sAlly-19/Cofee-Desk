@@ -7,6 +7,8 @@ import { IPC_CHANNELS } from "../shared/ipcChannels";
 import { store } from "./store";
 
 const savedFiles = new Map<number, Set<string>>();
+export const isReceivedFile = (sender: number, file: string) =>
+  savedFiles.get(sender)?.has(file) === true;
 function getUniqueFilePath(dir: string, fileName: string): string {
   let targetPath = path.join(dir, fileName);
   if (!fs.existsSync(targetPath)) return targetPath;

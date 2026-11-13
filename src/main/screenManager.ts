@@ -46,6 +46,17 @@ export async function selectDesktopSource(sender: number, sourceId: string) {
   return { success: true, sourceId, kind };
 }
 export function registerScreenIpcHandlers(): void {
+  ipcMain.handle("desktop:selection", (event) => {
+    assertTrusted(event);
+    const source = selectedSource(event.sender.id);
+    return source
+      ? {
+          sourceId: source.sourceId,
+          kind: source.sourceKind,
+          active: nativeSession(event.sender.id)?.captureActive === true,
+        }
+      : null;
+  });
   let inspecting = false;
   const invalidate = (id: number) => {
     prepareNativeSource(id);

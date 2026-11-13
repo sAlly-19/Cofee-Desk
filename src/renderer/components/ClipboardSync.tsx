@@ -10,6 +10,12 @@ export function ClipboardSync({
   return (
     <section className="clipboard-panel">
       <h3>Clipboard compartilhado</h3>
+      <p className="settings-hint">
+        Arquivos individuais copiados no sistema também são enviados quando
+        clipboard e arquivos estão permitidos (até 32 MB por arquivo e 64 MB por
+        seleção). Aguarde a transferência antes de colar. Recortar transfere uma
+        cópia, preservando os originais; pastas não são suportadas.
+      </p>
       <label>
         <input
           type="checkbox"
