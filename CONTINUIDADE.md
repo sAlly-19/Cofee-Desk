@@ -4,6 +4,8 @@ Atualizado em 13/11/2026. O trabalho foi retomado nesta mesma máquina, sem push
 
 Incidente posterior: o executável falhou no aceite entre duas máquinas porque o servidor hospedado ainda usa a confirmação anterior. Correção e implantação necessária em [INCIDENT-ACCEPT-CONFIRMATION.md](docs/INCIDENT-ACCEPT-CONFIRMATION.md). Não foi feito deploy.
 
+Novos ajustes de uso remoto em 13/11: [mouse, clipboard de arquivos, monitores, prévia e bandeja](docs/REMOTE-UX-IMPROVEMENTS.md). O cursor continua compartilhado; Recortar preserva os originais.
+
 Documentação consolidada: [sessões, verificações, atualização e recuperação](docs/RELIABILITY-AND-UPDATES.md).
 
 **Estado: implementação integrada em desenvolvimento; não é uma release liberada.** Não foram gerados instaladores, publicadas releases, alterado o banco de produção ou feito deploy do servidor nesta etapa. A versão do pacote permanece 1.0.1; decidir a próxima versão antes da futura publicação.
