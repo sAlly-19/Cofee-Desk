@@ -1,5 +1,7 @@
 # Coffee Desk 1.0.1
 
+Implementação de sessões, histórico e atualização integrada: consulte [funcionamento, verificações e pendências](docs/RELIABILITY-AND-UPDATES.md). Código em validação; nenhum novo instalador/release foi gerado nesta etapa.
+
 Implantação na Render + Neon: consulte [o guia de implantação](docs/DEPLOY-RENDER-NEON.md). Não é necessário gerar instalador para publicar o servidor e o painel.
 
 A versão 1.0.1 usa identidades Ed25519, PostgreSQL e painel administrativo com senha e TOTP. O protocolo protegido exige o cliente novo; o instalador 1.0.0 permanece disponível para o ambiente antigo.

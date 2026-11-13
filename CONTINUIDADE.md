@@ -1,6 +1,8 @@
 # Continuidade — Coffee Desk: confiabilidade, sessões e atualizações
 
-Atualizado em 12/11/2026. Ponto de continuidade solicitado pelo responsável para trabalhar em outro computador.
+Atualizado em 13/11/2026. O trabalho foi retomado nesta mesma máquina, sem push ou deploy. O checkpoint anterior é `18cb845`.
+
+Documentação consolidada: [sessões, verificações, atualização e recuperação](docs/RELIABILITY-AND-UPDATES.md).
 
 **Estado: implementação integrada em desenvolvimento; não é uma release liberada.** Não foram gerados instaladores, publicadas releases, alterado o banco de produção ou feito deploy do servidor nesta etapa. A versão do pacote permanece 1.0.1; decidir a próxima versão antes da futura publicação.
 
@@ -30,7 +32,7 @@ Atualizado em 12/11/2026. Ponto de continuidade solicitado pelo responsável par
 - Coordenadas normalizadas convertidas para o monitor escolhido, incluindo origem negativa; helper Win32 com reconhecimento de DPI. Eventos fora da área de vídeo são descartados.
 - Permissões independentes, revogação pelo anfitrião, bloqueios nos receptores dos canais e APIs nativas. Revogação libera teclas/botões e cancela transferências.
 - Acesso por senha com perfil persistente. Salvamento da senha e do perfil na mesma operação nativa.
-- Clipboard textual pelo canal WebRTC e APIs nativas protegidas. A sincronização atual é montada ao abrir o painel de clipboard; revisar a experiência se for desejável sincronização permanente sem abrir o painel.
+- Clipboard textual pelo canal WebRTC e APIs nativas protegidas. A sincronização permanece ativa durante a sessão autorizada, mesmo com o painel fechado; revogação interrompe leitura, envio e aplicação.
 - Limites de arquivos/fila/memória e validação do caminho de gravação. Abrir/revelar arquivos limita-se aos arquivos recebidos pela janela atual.
 
 ### Histórico e busca
@@ -80,11 +82,12 @@ Resultados da última execução disponível nesta máquina:
 | `npm run test:admin` | 21 verificações do navegador e confirmação final de persistência/notificação passaram |
 | `npm run test:hosting` | 31 verificações passaram, em ambiente local isolado |
 | `npm run test:client-config` | 11 verificações passaram |
-| `npm run test:reliability` | 33 verificações passaram |
+| `npm run test:reliability` | 39 verificações passaram |
+| `npm run test:update-ui` | 18 verificações do modal/hook em Electron passaram |
 | `npm run test:history` | 9 verificações passaram, usando Electron e armazenamento reais |
 | `npm run test:recovery` | 12 verificações passaram, usando PostgreSQL real isolado |
 | `npm run verify:startup` | Passou com a entrada principal real e controle bloqueado sem sessão |
-| `npm run verify:redesign` | **Última execução passou: 78 verificações, zero falhas** |
+| `npm run verify:redesign` | **Última execução em 13/11 passou: 91 verificações, zero falhas** |
 | `npm run audit:security` | Zero vulnerabilidades reportadas para cliente, servidor e runtime do servidor |
 
 A última regressão visual/funcional testou duas janelas Electron com identidades diferentes, servidor local e PostgreSQL reais: vídeo WebRTC, teclado, arquivo recebido e gravado, recusa/cancelamento, revogação e reautorização, bloqueios de clipboard/arquivos por IPC nos dois participantes, senha, perfil inicial somente visualização, histórico, favoritos, reconexão e controles nativos da janela.
@@ -103,18 +106,28 @@ Evidências locais **ignoradas pelo Git**, que não acompanharão o clone:
 - `artifacts/recovery-drill/validation.json`.
 - `artifacts/startup-smoke/result.json` e `artifacts/security-audit/`.
 
-## Pendências para concluir a entrega original
+## Situação após a retomada em 13/11
 
-1. Revisar as alterações integradas e complementar a documentação operacional definitiva. Este arquivo é um ponto de continuidade, não uma declaração de liberação.
-2. Testar escolha/troca de janela e encerramento da fonte com janelas reais; a regressão final confirmou monitor real, mas não cobriu toda a matriz de troca/fechamento.
-3. Validar em hardware físico múltiplos monitores, posições negativas, escalas diferentes e letterboxing. A geometria tem testes automatizados; a matriz física permanece pendente.
-4. Completar testes de payloads negados nos próprios canais, revogação durante transferência longa e envio/aplicação efetiva do clipboard entre dispositivos. Foram testados transferência real, abertura do clipboard e bloqueios nativos, mas não toda essa matriz.
-5. Revisar as fronteiras IPC: a confirmação nativa usa dados do renderer oficial, com validação de origem/argumentos. Não tratar isso como proteção contra renderer ou cliente integralmente adulterado. O servidor controla o aceite e as permissões de sinalização.
-6. Complementar testes visuais/teclado do modal de atualização e estados simulados da interface, além dos testes do núcleo já existentes. A validação de integridade sem assinatura Authenticode depende da confiança no GitHub/repositório; não há certificado comprado nem assinatura garantida.
-7. Rever mensagens/detalhes de diagnóstico para toda a matriz de falhas e comportamento de retry após falhas de captura/negociação.
-8. Finalizar instruções de release futura, escolher a próxima versão e verificar o workflow, sem executá-lo para empacotar nesta etapa.
-9. Reexecutar as verificações afetadas por qualquer mudança nova. Não é necessário repetir indefinidamente os testes já aprovados sem alteração relevante.
-10. Permanecem como critérios posteriores de liberação: duas máquinas em redes distintas, suspensão/despertar da hospedagem, deploy coordenado e atualização real entre dois instaladores. Clientes antigos sem atualizador precisarão de primeira instalação manual.
+- Corrigida a sincronização de clipboard para funcionar também com os painéis fechados.
+- Validados envio/aplicação efetiva de clipboard, payloads negados nos canais e revogação durante arquivo de 4 MB com envio controlado pelo teste.
+- Validadas troca para uma janela real da própria fixture, fechamento da fonte, aviso ao visualizador e retorno ao monitor sem restaurar controle revogado.
+- Controle nativo agora exige captura pronta, além de autorização e monitor identificado.
+- Adicionada validação de tipos dos campos de teclado/mouse também antes da injeção nativa; eventos inválidos são descartados.
+- Mapeamento de barras do vídeo extraído para função usada pelo aplicativo e coberta por testes. Sem metadados reais de vídeo, entrada é descartada.
+- Corrigida a recusa de captura no Electron 45 para usar callback nulo, evitando rejeição sem tratamento quando uma fonte desaparece.
+- Modal/hook de atualização testado em Electron com 18 verificações, sem rede ou execução de instalador.
+- Documentação operacional e CI atualizados. O workflow não publica uma release automaticamente.
+
+## Pendências externas e de liberação
+
+1. Matriz em hardware físico com vários monitores, posições negativas e escalas diferentes; a geometria e o letterboxing têm testes automatizados, mas não substituem hardware.
+2. Sessão completa entre duas máquinas de redes distintas. A comunicação local em duas instâncias passou, incluindo mídia, teclado, arquivos e clipboard.
+3. Suspensão/despertar da hospedagem gratuita e implantação coordenada do servidor. Não houve acesso a produção nesta retomada.
+4. Executável empacotado desta implementação e atualização real entre dois instaladores; continuam pendentes conforme a instrução de não gerar instaladores nem publicar releases.
+5. Definir a próxima versão antes da publicação. Clientes antigos sem atualizador precisarão de instalação manual inicial.
+6. Revisar os resultados locais em caso de novas mudanças. Não enviar segredos nem configuração privada ao repositório.
+
+A fronteira nativa confia no renderer oficial, com origem/argumentos validados. Isso não protege contra um renderer integralmente adulterado. A atualização depende dos metadados do GitHub e não oferece assinatura Authenticode garantida. Consulte os riscos residuais no documento consolidado.
 
 ## Retomar no outro computador
 
