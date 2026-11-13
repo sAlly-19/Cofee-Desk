@@ -16,7 +16,9 @@ import type { MouseEventData, KeyboardEventData } from "../shared/types";
 let inputProcess: ChildProcess | null = null;
 const enabledSenders = new Set<number>();
 const heldKeys = new Set<number>();
-const heldButtons = new Set<string>();
+const heldButtons = new Map<string, "virtual" | "shared">();
+const mouseModes = new Map<number, "virtual" | "shared">();
+let virtualMouseSupported = false;
 let isReady = false;
 
 // Mapeamento de KeyboardEvent.code para Windows Virtual-Key (VK)
@@ -127,9 +129,18 @@ function findOrCompileNativeHelper(): string | null {
       if (fs.existsSync(cscPath)) {
         console.log("[Input] Compilando CoffeeInput.exe via csc.exe...");
         try {
-          const { execSync } = require("child_process");
-          execSync(
-            `"${cscPath}" /nologo /optimize /target:exe /out:"${outExe}" "${csPath}"`,
+          const { execFileSync } = require("child_process");
+          execFileSync(
+            cscPath,
+            [
+              "/nologo",
+              "/optimize",
+              "/target:exe",
+              "/out:" + outExe,
+              csPath,
+              path.join(path.dirname(csPath), "VirtualMouse.cs"),
+            ],
+            { windowsHide: true },
           );
           if (fs.existsSync(outExe)) return outExe;
         } catch (err) {
@@ -172,6 +183,7 @@ function startNativeInputProcess(): void {
 
     child.stdout?.on("data", (data) => {
       const msg = data.toString().trim();
+      if (msg.includes("VIRTUAL_MOUSE_V1")) virtualMouseSupported = true;
       if (msg.includes("READY")) {
         isReady = true;
         console.log(
@@ -188,6 +200,7 @@ function startNativeInputProcess(): void {
       console.warn(`[Input] Helper finalizado com código ${code}.`);
       isReady = false;
       inputProcess = null;
+      virtualMouseSupported = false;
     });
   } catch (err) {
     console.error("[Input] Falha ao iniciar processo helper:", err);
@@ -217,17 +230,37 @@ function sendNativeCommand(cmd: string): void {
 function releaseHeldInput() {
   if (inputProcess?.stdin && !inputProcess.stdin.destroyed) {
     for (const key of heldKeys) inputProcess.stdin.write("KU " + key + "\n");
-    for (const button of heldButtons)
-      inputProcess.stdin.write("U " + button + "\n");
+    for (const [button, mode] of heldButtons)
+      inputProcess.stdin.write(
+        (mode === "virtual" ? "VU " : "U ") + button + "\n",
+      );
   }
   heldKeys.clear();
   heldButtons.clear();
 }
 export function registerInputIpcHandlers(): void {
+  ipcMain.handle("remote:mouse-mode", (event, mode: unknown) => {
+    assertTrusted(event);
+    if (
+      nativeSession(event.sender.id)?.role !== "host" ||
+      !["virtual", "shared"].includes(String(mode))
+    )
+      throw Error("Modo não autorizado");
+    releaseHeldInput();
+    mouseModes.set(event.sender.id, mode as "virtual" | "shared");
+    return mode;
+  });
+  ipcMain.handle("remote:input:release", (event) => {
+    assertTrusted(event);
+    if (nativeSession(event.sender.id)?.role !== "host") return false;
+    releaseHeldInput();
+    return true;
+  });
   onNativeSessionChange((sender) => {
     if (!hasPermission(sender, "control")) {
       if (enabledSenders.has(sender)) releaseHeldInput();
       enabledSenders.delete(sender);
+      if (!nativeSession(sender)) mouseModes.delete(sender);
     }
   });
   // Inicializa o helper nativo em background
@@ -263,20 +296,23 @@ export function registerInputIpcHandlers(): void {
       return;
     const point = normalizedPoint(bounds, normX!, normY!);
     if (!point) return;
-    sendNativeCommand("M " + point.x + " " + point.y);
+    const mode = mouseModes.get(event.sender.id) || "virtual";
+    if (mode === "virtual" && !virtualMouseSupported) return;
+    const prefix = mode === "virtual" ? "V" : "";
+    sendNativeCommand(prefix + "M " + point.x + " " + point.y);
     // Coordinates are mapped to the selected monitor, including negative offsets.
     if (type === "move" && normX !== undefined && normY !== undefined) {
       // Absolute movement was mapped above.
     } else if (type === "down") {
-      heldButtons.add(button);
-      sendNativeCommand(`D ${button}`);
+      heldButtons.set(button, mode);
+      sendNativeCommand(`${prefix}D ${button}`);
     } else if (type === "up") {
       heldButtons.delete(button);
-      sendNativeCommand(`U ${button}`);
+      sendNativeCommand(`${prefix}U ${button}`);
     } else if (type === "click") {
-      sendNativeCommand(`C ${button}`);
+      sendNativeCommand(`${prefix}C ${button}`);
     } else if (type === "double") {
-      sendNativeCommand(`DC ${button}`);
+      sendNativeCommand(`${prefix}DC ${button}`);
     } else if (
       type === "scroll" &&
       scrollDelta &&
@@ -284,7 +320,7 @@ export function registerInputIpcHandlers(): void {
     ) {
       // Inverte direção padrão para corresponder à roda do mouse
       sendNativeCommand(
-        `W ${Math.max(-12000, Math.min(12000, Math.round(-scrollDelta.y)))}`,
+        `${prefix}W ${Math.max(-12000, Math.min(12000, Math.round(-scrollDelta.y)))}`,
       );
     }
   });
@@ -351,7 +387,12 @@ export function registerInputIpcHandlers(): void {
   // Consulta status de permissão de controle
   ipcMain.handle(IPC_CHANNELS.REMOTE_CONTROL_STATUS, (event) => {
     assertTrusted(event);
-    return { enabled: enabledSenders.has(event.sender.id), ready: isReady };
+    return {
+      enabled: enabledSenders.has(event.sender.id),
+      ready: isReady,
+      mouseMode: mouseModes.get(event.sender.id) || "virtual",
+      virtualMouseSupported,
+    };
   });
 }
 

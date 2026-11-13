@@ -47,7 +47,9 @@
     "database:restore": "node scripts/database-recovery.js restore",
     "test:history": "node scripts/test-history.js",
     "test:update-ui": "node scripts/test-update-ui.js",
-    "test:file-clipboard": "node scripts/test-file-clipboard.js"
+    "test:file-clipboard": "node scripts/test-file-clipboard.js",
+    "test:pointer-capture": "node scripts/test-pointer-capture.js",
+    "test:virtual-mouse": "node scripts/test-virtual-mouse.js"
   },
   "dependencies": {
     "electron-squirrel-startup": "^1.0.1",

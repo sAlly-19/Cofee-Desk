@@ -58,10 +58,15 @@ app.once("browser-window-created", (_event, win) => {
         "window.electronAPI.minimizeToTray()",
       );
       state.trayHidden = !win.isVisible() && !win.isDestroyed();
+      await win.webContents.executeJavaScript(
+        "window.electronAPI.notifyIncomingCall()",
+      );
+      state.incomingRevealsHost = win.isVisible();
       app.emit("second-instance");
       state.trayRestored = win.isVisible();
       finish(
         state.trayHidden &&
+          state.incomingRevealsHost &&
           state.trayRestored &&
           listeners.mouse === 1 &&
           listeners.keyboard === 1 &&

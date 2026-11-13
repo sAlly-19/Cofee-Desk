@@ -398,6 +398,42 @@ async function run() {
       ),
     );
     check(
+      "Incoming request shows caller and permission profiles",
+      await js(
+        peer,
+        '!!document.querySelector(".request-device .font-mono")&&document.querySelectorAll(".request-profiles button").length===2',
+      ),
+    );
+    await click(peer, "Apenas visualização");
+    check(
+      "View-only request preset revokes optional resources",
+      await js(
+        peer,
+        '[...document.querySelectorAll(".permission-fields input")].every(i=>!i.checked)',
+      ),
+    );
+    await click(peer, "Acesso completo");
+    check(
+      "Full request preset starts with all permissions selected",
+      await js(
+        peer,
+        '[...document.querySelectorAll(".permission-fields input")].every(i=>i.checked)',
+      ),
+    );
+    await capture(peer, "incoming-session-request");
+    peer.setContentSize(1024, 680);
+    await ready(peer);
+    check(
+      "Incoming request footer remains accessible at minimum window size",
+      await js(
+        peer,
+        '(()=>{const footer=document.querySelector(".modal-footer").getBoundingClientRect();return footer.bottom<=innerHeight&&footer.top>=0&&document.documentElement.scrollWidth<=innerWidth;})()',
+      ),
+    );
+    await capture(peer, "incoming-session-request-1024");
+    peer.setContentSize(1672, 941);
+    await ready(peer);
+    check(
       "Attempt does not enter history",
       await js(win, '!!document.querySelector(".recent-empty")'),
     );
@@ -518,7 +554,11 @@ async function run() {
         '(()=>{const c=window.__testChannels.find(c=>c.label==="coffee-desk-pointer");return c.ordered===false&&c.maxRetransmits===0;})()',
       ),
     );
+    check('Native mouse defaults to independent backend',await js(peer,'window.electronAPI.getInputControlStatus().then(s=>s.mouseMode==="virtual"&&s.virtualMouseSupported)'));
+    check('Viewer cannot change host native mouse mode',await js(win,'window.electronAPI.setMouseMode("shared").then(()=>false,()=>true)'));
+    await js(peer,'window.electronAPI.setMouseMode("shared")');check('Host may explicitly select shared cursor',await js(peer,'window.electronAPI.getInputControlStatus().then(s=>s.mouseMode==="shared")'));await js(peer,'window.electronAPI.setMouseMode("virtual")');
     await js(peer, "window.electronAPI.toggleInputControl(false)");
+    // Animation-frame batching is exercised by the dedicated hook harness; these windows stay hidden.
     const beforePointer = remoteMouse.length;
     await js(win, () => {
       const c = window.__testChannels.find(
@@ -527,14 +567,14 @@ async function run() {
       c.send(
         JSON.stringify({
           type: "mouse",
-          seq: 1,
+          seq: 100,
           data: { type: "move", normX: 0.5, normY: 0.5 },
         }),
       );
       c.send(
         JSON.stringify({
           type: "mouse",
-          seq: 0,
+          seq: 99,
           data: { type: "move", normX: 0.4, normY: 0.4 },
         }),
       );
@@ -564,15 +604,14 @@ async function run() {
       select.dispatchEvent(new Event("change", { bubbles: true }));
     });
     check(
-      "Remote monitor switch requires host consent",
-      await until(
+      "Monitor switch does not ask host for consent",
+      await js(
         peer,
-        'document.body.textContent.includes("Trocar monitor compartilhado?")',
+        '!document.body.textContent.includes("Trocar monitor compartilhado?")',
       ),
     );
-    await click(peer, "Manter atual");
     check(
-      "Denied monitor request clears pending state",
+      "Monitor switch completes without host interaction",
       await until(
         win,
         '!document.querySelector(".session-monitor-picker select").disabled',

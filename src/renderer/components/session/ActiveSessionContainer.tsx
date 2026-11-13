@@ -48,6 +48,7 @@ export function ActiveSessionContainer({
     [source, setSource] = useState("");
   const [newKind, setNewKind] = useState<"screen" | "window">(sourceKind);
   const [sourceError, setSourceError] = useState("");
+  const [mouseMode, setMouseMode] = useState<"virtual" | "shared">("virtual");
   const [activeDrawer, setActiveDrawer] = useState<
     "clipboard" | "files" | null
   >(null);
@@ -148,14 +149,31 @@ export function ActiveSessionContainer({
         title="Tela e permissões"
         subtitle="Você pode revogar recursos a qualquer momento."
       >
-        <label className="monitor-switch-consent">
-          <input
-            type="checkbox"
-            checked={monitors.allowSwitch}
-            onChange={(e) => monitors.setAllowSwitch(e.target.checked)}
-          />
-          Permitir que o computador remoto alterne entre meus monitores nesta
-          sessão
+        <label className="mouse-mode-choice">
+          Mouse do anfitrião
+          <select
+            aria-label="Modo do mouse remoto"
+            value={mouseMode}
+            onChange={async (e) => {
+              try {
+                const mode = e.target.value as "virtual" | "shared";
+                await window.electronAPI.setMouseMode(mode);
+                setMouseMode(mode);
+              } catch {
+                setSourceError("Não foi possível alterar o modo do mouse.");
+              }
+            }}
+          >
+            <option value="virtual">
+              Ponteiro independente (experimental)
+            </option>
+            <option value="shared">Cursor compartilhado do Windows</option>
+          </select>
+          <small>
+            O modo independente envia mensagens às janelas sem mover o cursor do
+            Windows. Alguns programas não aceitam esse tipo de controle. O
+            teclado continua usando o foco da área de trabalho.
+          </small>
         </label>
         <PermissionsFields
           value={permissions}

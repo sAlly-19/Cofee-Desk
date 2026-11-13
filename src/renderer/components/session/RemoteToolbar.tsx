@@ -6,11 +6,14 @@ import {
   Keyboard,
   ClipboardList,
   FolderSync,
+  MousePointer2,
 } from "lucide-react";
 import type { FileTransferItem } from "@shared/types";
 import { formatSpeed } from "../../hooks/useFileTransfer";
 
 interface RemoteToolbarProps {
+  mouseCaptured?: boolean;
+  onToggleMouseCapture?: () => void;
   remoteId: string;
   permissions: SessionPermissions;
   role: "host" | "client";
@@ -28,6 +31,8 @@ interface RemoteToolbarProps {
 }
 
 export function RemoteToolbar({
+  mouseCaptured,
+  onToggleMouseCapture,
   remoteId,
   permissions,
   role,
@@ -133,6 +138,20 @@ export function RemoteToolbar({
           </button>
         )}
 
+        {role === "client" && (
+          <button
+            className="mouse-capture-button"
+            disabled={!permissions.control}
+            aria-pressed={mouseCaptured}
+            title="Prender o mouse à sessão. Pressione Esc para liberar."
+            onClick={onToggleMouseCapture}
+          >
+            <MousePointer2 size={15} />
+            <span>
+              {mouseCaptured ? "Mouse capturado · Esc" : "Capturar mouse"}
+            </span>
+          </button>
+        )}
         {/* Indicador de foco de teclado no Client */}
         {role === "client" && (
           <div

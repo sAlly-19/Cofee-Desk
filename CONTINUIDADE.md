@@ -4,6 +4,8 @@ Atualizado em 13/11/2026. O trabalho foi retomado nesta mesma máquina, sem push
 
 Incidente posterior: o executável falhou no aceite entre duas máquinas porque o servidor hospedado ainda usa a confirmação anterior. Correção e implantação necessária em [INCIDENT-ACCEPT-CONFIRMATION.md](docs/INCIDENT-ACCEPT-CONFIRMATION.md). Não foi feito deploy.
 
+Atualização posterior: removida a confirmação intermediária ao alternar monitores; novo modal de solicitação do anfitrião e botão Capturar mouse (Esc para liberar). O cursor do Windows continua compartilhado, sem bloqueio da entrada física.
+
 Novos ajustes de uso remoto em 13/11: [mouse, clipboard de arquivos, monitores, prévia e bandeja](docs/REMOTE-UX-IMPROVEMENTS.md). O cursor continua compartilhado; Recortar preserva os originais.
 
 Documentação consolidada: [sessões, verificações, atualização e recuperação](docs/RELIABILITY-AND-UPDATES.md).
@@ -165,3 +167,11 @@ A fronteira nativa confia no renderer oficial, com origem/argumentos validados. 
 - Usar senha de backup longa e exclusiva (mínimo implementado: 14 caracteres). A chave `ADMIN_ENCRYPTION_KEY` fica em recuperação separada: não está incluída no backup.
 - O backup implementado é lógico e específico do esquema atual (versão 1); não substitui um processo geral de `pg_dump` para futuras alterações de esquema ou volumes muito grandes.
 - Restauração recusa esquema público que já possua tabelas. Não executar testes em produção. O ensaio automatizado cria e descarta outro banco local, sem sobrescrever produção.
+## Modal, monitores e ponteiro independente — 13/11/2026
+
+- Monitores podem ser trocados pelo visualizador sem nova confirmação depois do aceite de compartilhamento de monitor; janela isolada não expõe outros monitores.
+- Modal de solicitação com ID, perfis/permissões, fontes e aceitar/recusar; restaura o anfitrião da bandeja.
+- Ponteiro independente experimental padrão via mensagens Win32, sem mover o cursor físico. Alternativa compartilhada exige escolha explícita do anfitrião. Alguns programas ignoram mensagens; teclado e foco continuam compartilhados.
+- Capturar mouse no visualizador é uma função complementar (Esc libera), não a implementação da independência.
+- Testes próprios: `test:virtual-mouse` (Chromium real, sem mover cursor para o alvo) e `test:pointer-capture` (hook com Pointer Lock simulado). Ver docs/REMOTE-UX-IMPROVEMENTS.md.
+- Requer novo build em ambos os computadores para validar ponta a ponta. Sem instalador, publicação ou deploy nesta etapa.

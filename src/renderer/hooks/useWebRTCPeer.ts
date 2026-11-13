@@ -90,6 +90,10 @@ export function useWebRTCPeer({
             return;
           }
           if (role !== "host" || !policy.current.control) return;
+          if (m.type === "release-input") {
+            void window.electronAPI.releaseRemoteInput().catch(() => {});
+            return;
+          }
           if (
             (m.type === "mouse" && validRemoteMouse(m.data)) ||
             (m.type === "keyboard" && validRemoteKeyboard(m.data))

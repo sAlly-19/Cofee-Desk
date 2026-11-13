@@ -10,6 +10,7 @@ if (process.platform === "win32") {
   const hash = crypto
       .createHash("sha256")
       .update(fs.readFileSync(source))
+    .update(fs.readFileSync(path.join(root,"src/main/native/VirtualMouse.cs")))
       .digest("hex"),
     stamp = path.join(out, ".source-sha256"),
     exe = path.join(out, "CoffeeInput-v2.exe");
@@ -24,7 +25,7 @@ if (process.platform === "win32") {
     );
     execFileSync(
       compiler,
-      ["/nologo", "/optimize", "/target:exe", "/out:" + exe, source],
+      ["/nologo", "/optimize", "/target:exe", "/out:" + exe, source,path.join(root,"src/main/native/VirtualMouse.cs")],
       { stdio: "inherit", windowsHide: true },
     );
     fs.writeFileSync(stamp, hash);

@@ -67,12 +67,7 @@ export function registerTray(window: BrowserWindow) {
   tray.on("balloon-click", show);
   ipcMain.handle("window:incoming", (event) => {
     assertTrusted(event);
-    if (!window.isVisible())
-      tray?.displayBalloon({
-        title: "Coffee Desk",
-        content:
-          "Uma solicitação de acesso aguarda sua confirmação. Clique para abrir.",
-      });
+    show();
     return true;
   });
   tray.on("right-click", () => tray?.popUpContextMenu(menu()));

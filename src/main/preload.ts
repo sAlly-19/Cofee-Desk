@@ -16,6 +16,12 @@ import type {
 
 // Permite que o renderer invoque o main de forma tipada e segura
 const electronAPI = {
+  setMouseMode: (mode: "virtual" | "shared") =>
+    ipcRenderer.invoke("remote:mouse-mode", mode) as Promise<
+      "virtual" | "shared"
+    >,
+  releaseRemoteInput: () =>
+    ipcRenderer.invoke("remote:input:release") as Promise<boolean>,
   notifyIncomingCall: () =>
     ipcRenderer.invoke("window:incoming") as Promise<boolean>,
   getCaptureSelection: () =>

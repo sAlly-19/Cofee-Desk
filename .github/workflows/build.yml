@@ -30,6 +30,8 @@ jobs:
       - run: npm run test:reliability
       - run: npm run test:file-clipboard
       - run: npm run test:history
+      - run: npm run test:pointer-capture
+      - run: npm run test:virtual-mouse
       - run: npm run test:update-ui
       - run: npm run test:recovery
       - run: npm run verify:startup

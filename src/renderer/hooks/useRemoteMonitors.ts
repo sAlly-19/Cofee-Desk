@@ -12,13 +12,10 @@ export function useRemoteMonitors(
   switchSource: (id: string) => Promise<void>,
 ) {
   const [monitors, setMonitors] = useState<Monitor[]>([]),
-    [pending, setPending] = useState(false),
-    [allowSwitch, setAllowSwitch] = useState(false);
-  const switchRef = useRef(switchSource),
-    allow = useRef(false);
+    [pending, setPending] = useState(false);
+  const switchRef = useRef(switchSource);
   switchRef.current = switchSource;
-  allow.current = allowSwitch;
-  const { showConfirm, showToast } = useModal();
+  const { showToast } = useModal();
   useEffect(() => {
     if (!channel) return;
     let active = true,
@@ -40,7 +37,7 @@ export function useRemoteMonitors(
         if (active)
           send({
             type: "monitor-list",
-            monitors: sources
+            monitors: (selected?.kind === "screen" ? sources : [])
               .filter((s) => s.id.startsWith("screen:"))
               .slice(0, 16)
               .map((s, i) => ({
@@ -87,7 +84,7 @@ export function useRemoteMonitors(
           if (m.accepted !== true)
             showToast({
               type: "info",
-              message: "O anfitrião não autorizou a troca de monitor.",
+              message: "Não foi possível acessar o monitor solicitado.",
             });
           return;
         }
@@ -101,6 +98,13 @@ export function useRemoteMonitors(
         ) {
           busy = true;
           try {
+            if (
+              (await window.electronAPI.getCaptureSelection())?.kind !==
+              "screen"
+            ) {
+              send({ type: "monitor-result", accepted: false });
+              return;
+            }
             const sources = (
               (await window.electronAPI.getDesktopSources()) as DesktopSource[]
             ).filter((s) => s.id.startsWith("screen:"));
@@ -109,17 +113,7 @@ export function useRemoteMonitors(
               send({ type: "monitor-result", accepted: false });
               return;
             }
-            const accepted =
-              allow.current ||
-              (await showConfirm({
-                title: "Trocar monitor compartilhado?",
-                message:
-                  "O computador remoto solicitou visualizar o Monitor " +
-                  (index + 1) +
-                  ".",
-                confirmText: "Compartilhar monitor",
-                cancelText: "Manter atual",
-              }));
+            const accepted = true;
             if (!active) return;
             if (accepted) {
               await switchRef.current(m.id);
@@ -142,15 +136,20 @@ export function useRemoteMonitors(
       if (role === "client") send({ type: "monitor-list-request" });
       else void list().catch(() => {});
     };
+    const sourceChanged = () => {
+      if (role === "host") void list(true).catch(() => {});
+    };
+    window.addEventListener("capture-source-changed", sourceChanged);
     channel.addEventListener("message", receive);
     channel.addEventListener("open", open);
     open();
     return () => {
       active = false;
+      window.removeEventListener("capture-source-changed", sourceChanged);
       channel.removeEventListener("message", receive);
       channel.removeEventListener("open", open);
     };
-  }, [channel, role, showConfirm, showToast]);
+  }, [channel, role, showToast]);
   useEffect(() => {
     if (!pending) return;
     const timer = setTimeout(() => {
@@ -165,8 +164,6 @@ export function useRemoteMonitors(
   return {
     monitors,
     pending,
-    allowSwitch,
-    setAllowSwitch,
     request: (id: string) => {
       if (channel?.readyState === "open" && !pending) {
         setPending(true);

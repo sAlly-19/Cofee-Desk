@@ -82,6 +82,10 @@ export function RemoteStreamView({
 
   // Hook de captura de mouse e teclado
   const {
+    mouseCaptured,
+    localCursor,
+    captureError,
+    toggleMouseCapture,
     isKeyboardFocused,
     setIsKeyboardFocused,
     hostControlEnabled,
@@ -167,6 +171,8 @@ export function RemoteStreamView({
     >
       {/* 1. BARRA DE FERRAMENTAS FLUTUANTE */}
       <RemoteToolbar
+        mouseCaptured={mouseCaptured}
+        onToggleMouseCapture={() => void toggleMouseCapture()}
         remoteId={remoteId}
         role={role}
         peerState={peerState}
@@ -205,6 +211,29 @@ export function RemoteStreamView({
           }}
         />
       </div>
+      {mouseCaptured && localCursor && (
+        <svg
+          className="session-local-cursor"
+          style={{ left: localCursor.x, top: localCursor.y }}
+          width="22"
+          height="28"
+          viewBox="0 0 22 28"
+          aria-hidden="true"
+        >
+          <path
+            d="M2 2v22l5-6 5 9 4-2-5-9 8-1z"
+            fill="#fff5e5"
+            stroke="#25180f"
+            strokeWidth="1.6"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
+      {captureError && (
+        <div className="mouse-capture-feedback" role="status">
+          {captureError}
+        </div>
+      )}
       {/* 2. ERRO SOBREPOSTO */}
       {error && (
         <div

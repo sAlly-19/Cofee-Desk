@@ -14,6 +14,8 @@ namespace CoffeeDesk
         static extern bool SetProcessDPIAware();
         [DllImport("user32.dll")]
         static extern bool SetCursorPos(int X, int Y);
+        [StructLayout(LayoutKind.Sequential)]struct CursorPoint{public int X,Y;}
+        [DllImport("user32.dll")]static extern bool GetCursorPos(out CursorPoint point);
 
         [DllImport("user32.dll")]
         static extern void mouse_event(uint dwFlags, int dx, int dy, uint dwData, UIntPtr dwExtraInfo);
@@ -110,7 +112,7 @@ namespace CoffeeDesk
         {
             try { SetProcessDpiAwarenessContext(new IntPtr(-4)); } catch { try { SetProcessDPIAware(); } catch {} }
             Console.OutputEncoding = Encoding.UTF8;
-            Console.WriteLine("READY");
+            Console.WriteLine("READY VIRTUAL_MOUSE_V1");
             Console.Out.Flush();
 
             string line;
@@ -119,12 +121,14 @@ namespace CoffeeDesk
                 if (string.IsNullOrWhiteSpace(line)) continue;
                 if (line == "PING") { Console.WriteLine("PONG"); Console.Out.Flush(); continue; }
                 if (line == "EXIT") break;
+                if(line=="CURSOR"){CursorPoint p;GetCursorPos(out p);Console.WriteLine("CURSOR "+p.X+" "+p.Y);Console.Out.Flush();continue;}
 
                 try
                 {
                     string[] parts = line.Split(' ');
                     string cmd = parts[0];
 
+                    if (cmd.StartsWith("V", StringComparison.Ordinal)) { VirtualMouse.Execute(parts); continue; }
                     switch (cmd)
                     {
                         // M x y (pixels absolutos)

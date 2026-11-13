@@ -104,12 +104,23 @@ export function registerScreenIpcHandlers(): void {
   screen.on("display-metrics-changed", topology);
 
   session.defaultSession.setPermissionCheckHandler(
-    (_contents, permission) =>
-      permission === "display-capture" || permission === "media",
+    (contents, permission) =>
+      permission === "display-capture" ||
+      permission === "media" ||
+      (permission === "pointerLock" &&
+        !!contents &&
+        nativeSession(contents.id)?.role === "client" &&
+        nativeSession(contents.id)?.permissions.control === true),
   );
   session.defaultSession.setPermissionRequestHandler(
-    (_contents, permission, callback) =>
-      callback(permission === "display-capture" || permission === "media"),
+    (contents, permission, callback) =>
+      callback(
+        permission === "display-capture" ||
+          permission === "media" ||
+          (permission === "pointerLock" &&
+            nativeSession(contents.id)?.role === "client" &&
+            nativeSession(contents.id)?.permissions.control === true),
+      ),
   );
   session.defaultSession.setDisplayMediaRequestHandler(
     async (request, callback) => {

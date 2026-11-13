@@ -1,6 +1,8 @@
 import { videoPoint } from "../../shared/geometry";
 import {
   useState,
+  useEffect,
+  useCallback,
   useRef,
   type MouseEvent,
   type WheelEvent,
@@ -44,52 +46,170 @@ export function useRemoteInputCapture({
   const [isKeyboardFocused, setIsKeyboardFocused] = useState(false);
   const [hostControlEnabled, setHostControlEnabled] = useState(true);
   const pointerSequence = useRef(0);
-  const lastMoveSentRef = useRef<number>(0);
+  const [mouseCaptured, setMouseCaptured] = useState(false),
+    [captureError, setCaptureError] = useState("");
+  const pendingCursor = useRef<{ x: number; y: number } | null>(null);
+  const [localCursor, setLocalCursor] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const virtualPoint = useRef({ normX: 0.5, normY: 0.5 }),
+    frame = useRef(0),
+    pendingMove = useRef<ReturnType<typeof videoPoint>>(null),
+    allowedNow = useRef(allowed);
+  allowedNow.current = allowed;
+  const release = useCallback(() => {
+    const dc = dataChannelRef.current;
+    if (dc?.readyState === "open")
+      dc.send(JSON.stringify({ type: "release-input" }));
+  }, [dataChannelRef]);
+  useEffect(() => {
+    const changed = () => {
+      const captured =
+        !!document.pointerLockElement &&
+        containerRef.current?.contains(document.pointerLockElement) === true;
+      setMouseCaptured(captured);
+      if (!captured) {
+        setLocalCursor(null);
+        release();
+      }
+    };
+    const blur = () => {
+      pendingMove.current = null;
+      pendingCursor.current = null;
+      setLocalCursor(null);
+      if (frame.current) cancelAnimationFrame(frame.current);
+      frame.current = 0;
+      if (document.pointerLockElement) document.exitPointerLock();
+      release();
+    };
+    document.addEventListener("pointerlockchange", changed);
+    window.addEventListener("blur", blur);
+    return () => {
+      if (frame.current) cancelAnimationFrame(frame.current);
+      if (
+        document.pointerLockElement &&
+        containerRef.current?.contains(document.pointerLockElement)
+      )
+        document.exitPointerLock();
+      document.removeEventListener("pointerlockchange", changed);
+      window.removeEventListener("blur", blur);
+      release();
+    };
+  }, [containerRef, release]);
+  useEffect(() => {
+    if (!allowed) {
+      pendingMove.current = null;
+      if (frame.current) cancelAnimationFrame(frame.current);
+      frame.current = 0;
+      if (document.pointerLockElement) document.exitPointerLock();
+    }
+  }, [allowed]);
+  const toggleMouseCapture = async () => {
+    if (document.pointerLockElement) {
+      document.exitPointerLock();
+      return;
+    }
+    if (role !== "client" || !allowed) return;
+    const video = containerRef.current?.querySelector("video");
+    if (!video || !video.videoWidth) return;
+    try {
+      setCaptureError("");
+      await video.requestPointerLock();
+      containerRef.current?.focus();
+    } catch {
+      setCaptureError(
+        "O sistema não permitiu capturar o mouse. Clique no vídeo e tente novamente.",
+      );
+    }
+  };
 
   // Mapeamento preciso de coordenadas compensando letterbox / pillarbox (object-fit: contain)
-  const getNormalizedCoords = (e: MouseEvent<HTMLVideoElement>) => {
+  const getNormalizedCoords = (
+    e: MouseEvent<HTMLVideoElement>,
+    moving = false,
+  ) => {
     const video = e.currentTarget;
     const rect = video.getBoundingClientRect();
 
-    return videoPoint(
+    if (document.pointerLockElement === video) {
+      if (!video.videoWidth || !video.videoHeight) return null;
+      const scale = Math.min(
+          rect.width / video.videoWidth,
+          rect.height / video.videoHeight,
+        ),
+        width = video.videoWidth * scale,
+        height = video.videoHeight * scale;
+      if (!width || !height) return null;
+      if (moving) {
+        virtualPoint.current = {
+          normX: Math.max(
+            0,
+            Math.min(1, virtualPoint.current.normX + e.movementX / width),
+          ),
+          normY: Math.max(
+            0,
+            Math.min(1, virtualPoint.current.normY + e.movementY / height),
+          ),
+        };
+      }
+      const { normX, normY } = virtualPoint.current;
+      pendingCursor.current = {
+        x: rect.left + (rect.width - width) / 2 + normX * width,
+        y: rect.top + (rect.height - height) / 2 + normY * height,
+      };
+      return {
+        normX,
+        normY,
+        pixelX: Math.round(normX * (video.videoWidth - 1)),
+        pixelY: Math.round(normY * (video.videoHeight - 1)),
+      };
+    }
+    const result = videoPoint(
       rect,
       video.videoWidth,
       video.videoHeight,
       e.clientX,
       e.clientY,
     );
+    if (result)
+      virtualPoint.current = { normX: result.normX, normY: result.normY };
+    return result;
   };
 
-  // Movimento suave com throttling a ~60fps
+  // Coalesce events per animation frame, retaining the final pointer position.
   const handleMouseMove = (e: MouseEvent<HTMLVideoElement>) => {
     if (role === "host" || !allowed) return;
-    const dc =
-      pointerChannelRef?.current?.readyState === "open"
-        ? pointerChannelRef.current
-        : dataChannelRef.current;
-    if (!dc || dc.readyState !== "open") return;
-
-    const now = performance.now();
-    if (now - lastMoveSentRef.current < 16) return;
-    lastMoveSentRef.current = now;
-
-    const coords = getNormalizedCoords(e);
+    const coords = getNormalizedCoords(e, true);
     if (!coords) return;
-    const { normX, normY, pixelX, pixelY } = coords;
-
-    dc.send(
-      JSON.stringify({
-        type: "mouse",
-        seq: ++pointerSequence.current,
-        data: {
-          type: "move",
-          x: pixelX,
-          y: pixelY,
-          normX,
-          normY,
-        },
-      }),
-    );
+    pendingMove.current = coords;
+    if (frame.current) return;
+    frame.current = requestAnimationFrame(() => {
+      frame.current = 0;
+      if (document.pointerLockElement && pendingCursor.current)
+        setLocalCursor(pendingCursor.current);
+      const point = pendingMove.current;
+      pendingMove.current = null;
+      if (!allowedNow.current || !point) return;
+      const dc =
+        pointerChannelRef?.current?.readyState === "open"
+          ? pointerChannelRef.current
+          : dataChannelRef.current;
+      if (dc?.readyState === "open")
+        dc.send(
+          JSON.stringify({
+            type: "mouse",
+            seq: ++pointerSequence.current,
+            data: {
+              type: "move",
+              x: point.pixelX,
+              y: point.pixelY,
+              normX: point.normX,
+              normY: point.normY,
+            },
+          }),
+        );
+    });
   };
 
   const handleMouseDown = (e: MouseEvent<HTMLVideoElement>) => {
@@ -222,6 +342,11 @@ export function useRemoteInputCapture({
   // Captura de teclado com foco
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (role === "host" || !allowed) return;
+    if (e.key === "Escape" && document.pointerLockElement) {
+      e.preventDefault();
+      document.exitPointerLock();
+      return;
+    }
     const dc = dataChannelRef.current;
     if (!dc || dc.readyState !== "open") return;
 
@@ -284,6 +409,10 @@ export function useRemoteInputCapture({
   };
 
   return {
+    mouseCaptured,
+    localCursor,
+    captureError,
+    toggleMouseCapture,
     isKeyboardFocused,
     setIsKeyboardFocused,
     hostControlEnabled,
