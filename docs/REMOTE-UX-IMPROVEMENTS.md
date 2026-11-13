@@ -75,3 +75,7 @@ Capturas do modal ficam em `artifacts/redesign/incoming-session-request.png` e `
 `npm run test:virtual-mouse` executa o helper nativo contra uma janela Chromium real: clique recebido, cursor do Windows não deslocado para o alvo virtual e ausência de APIs de injeção/movimento no backend independente. São três verificações; o relatório fica em `artifacts/virtual-mouse/validation.json`. Não comprova compatibilidade universal nem isolamento de teclado.
 
 Resultado final desta etapa: lint, TypeScript e build passaram; interface/sessões 106/106; captura do ponteiro 10/10; helper independente 3/3; inicialização/bandeja/restauração do anfitrião aprovadas. A primeira tentativa Electron no sandbox foi impedida pelas ACLs da sessão gráfica; a execução fora desse sandbox passou, sem alterar ACLs. O build mantém o aviso pré-existente do Vite sobre o formato da configuração.
+
+## Mouse livre — revisão solicitada
+
+Removidos Pointer Lock, botão Capturar mouse, cursor sobreposto e liberação por Esc. O mouse atua normalmente sobre o vídeo e pode sair livremente. Esc é enviado como tecla remota quando o vídeo tem foco. O backend independente experimental permanece. Perda de foco e revogação continuam liberando entradas pressionadas. Esta revisão substitui o comportamento de captura descrito anteriormente.

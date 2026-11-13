@@ -1780,46 +1780,6 @@ button:disabled {
     font-size: 22px;
   }
 }
-.mouse-capture-button {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  border: 1px solid var(--border-warm);
-  border-radius: 8px;
-  padding: 7px 10px;
-  background: var(--accent-subtle);
-  color: var(--accent-soft);
-  font-size: 11px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.mouse-capture-button[aria-pressed="true"] {
-  background: #94602b44;
-  border-color: var(--accent-soft);
-}
-.mouse-capture-button:focus-visible {
-  outline: 2px solid var(--accent-soft);
-  outline-offset: 3px;
-}
-.session-local-cursor {
-  position: fixed;
-  z-index: 100;
-  pointer-events: none;
-  filter: drop-shadow(0 1px 2px #0008);
-}
-.mouse-capture-feedback {
-  position: absolute;
-  left: 20px;
-  bottom: 55px;
-  z-index: 30;
-  max-width: 360px;
-  font-size: 12px;
-  background: #291b12ed;
-  color: var(--text-primary);
-  border: 1px solid var(--border-warm);
-  border-radius: 8px;
-  padding: 12px;
-}
 .session-toolbar > div:first-child {
   min-width: 0;
 }
@@ -1831,11 +1791,7 @@ button:disabled {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-@media (max-width: 1100px) {
-  .mouse-capture-button span {
-    display: none;
-  }
-}
+
 
 .mouse-mode-choice { display:grid; gap:9px; padding:12px; margin-bottom:14px; border:1px solid var(--border-warm); border-radius:10px; color:var(--text-primary); font-size:13px; }
 .mouse-mode-choice select { background:var(--bg-input); color:var(--text-primary); border:1px solid var(--border-warm); border-radius:8px; padding:10px; }

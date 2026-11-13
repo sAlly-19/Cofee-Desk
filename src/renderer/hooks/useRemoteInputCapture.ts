@@ -46,15 +46,7 @@ export function useRemoteInputCapture({
   const [isKeyboardFocused, setIsKeyboardFocused] = useState(false);
   const [hostControlEnabled, setHostControlEnabled] = useState(true);
   const pointerSequence = useRef(0);
-  const [mouseCaptured, setMouseCaptured] = useState(false),
-    [captureError, setCaptureError] = useState("");
-  const pendingCursor = useRef<{ x: number; y: number } | null>(null);
-  const [localCursor, setLocalCursor] = useState<{
-    x: number;
-    y: number;
-  } | null>(null);
-  const virtualPoint = useRef({ normX: 0.5, normY: 0.5 }),
-    frame = useRef(0),
+  const frame = useRef(0),
     pendingMove = useRef<ReturnType<typeof videoPoint>>(null),
     allowedNow = useRef(allowed);
   allowedNow.current = allowed;
@@ -64,130 +56,46 @@ export function useRemoteInputCapture({
       dc.send(JSON.stringify({ type: "release-input" }));
   }, [dataChannelRef]);
   useEffect(() => {
-    const changed = () => {
-      const captured =
-        !!document.pointerLockElement &&
-        containerRef.current?.contains(document.pointerLockElement) === true;
-      setMouseCaptured(captured);
-      if (!captured) {
-        setLocalCursor(null);
-        release();
-      }
-    };
     const blur = () => {
       pendingMove.current = null;
-      pendingCursor.current = null;
-      setLocalCursor(null);
       if (frame.current) cancelAnimationFrame(frame.current);
       frame.current = 0;
-      if (document.pointerLockElement) document.exitPointerLock();
       release();
     };
-    document.addEventListener("pointerlockchange", changed);
     window.addEventListener("blur", blur);
     return () => {
-      if (frame.current) cancelAnimationFrame(frame.current);
-      if (
-        document.pointerLockElement &&
-        containerRef.current?.contains(document.pointerLockElement)
-      )
-        document.exitPointerLock();
-      document.removeEventListener("pointerlockchange", changed);
       window.removeEventListener("blur", blur);
-      release();
+      blur();
     };
-  }, [containerRef, release]);
+  }, [release]);
   useEffect(() => {
     if (!allowed) {
       pendingMove.current = null;
       if (frame.current) cancelAnimationFrame(frame.current);
       frame.current = 0;
-      if (document.pointerLockElement) document.exitPointerLock();
+      release();
     }
-  }, [allowed]);
-  const toggleMouseCapture = async () => {
-    if (document.pointerLockElement) {
-      document.exitPointerLock();
-      return;
-    }
-    if (role !== "client" || !allowed) return;
-    const video = containerRef.current?.querySelector("video");
-    if (!video || !video.videoWidth) return;
-    try {
-      setCaptureError("");
-      await video.requestPointerLock();
-      containerRef.current?.focus();
-    } catch {
-      setCaptureError(
-        "O sistema não permitiu capturar o mouse. Clique no vídeo e tente novamente.",
-      );
-    }
-  };
-
-  // Mapeamento preciso de coordenadas compensando letterbox / pillarbox (object-fit: contain)
-  const getNormalizedCoords = (
-    e: MouseEvent<HTMLVideoElement>,
-    moving = false,
-  ) => {
+  }, [allowed, release]);
+  const getNormalizedCoords = (e: MouseEvent<HTMLVideoElement>) => {
     const video = e.currentTarget;
-    const rect = video.getBoundingClientRect();
-
-    if (document.pointerLockElement === video) {
-      if (!video.videoWidth || !video.videoHeight) return null;
-      const scale = Math.min(
-          rect.width / video.videoWidth,
-          rect.height / video.videoHeight,
-        ),
-        width = video.videoWidth * scale,
-        height = video.videoHeight * scale;
-      if (!width || !height) return null;
-      if (moving) {
-        virtualPoint.current = {
-          normX: Math.max(
-            0,
-            Math.min(1, virtualPoint.current.normX + e.movementX / width),
-          ),
-          normY: Math.max(
-            0,
-            Math.min(1, virtualPoint.current.normY + e.movementY / height),
-          ),
-        };
-      }
-      const { normX, normY } = virtualPoint.current;
-      pendingCursor.current = {
-        x: rect.left + (rect.width - width) / 2 + normX * width,
-        y: rect.top + (rect.height - height) / 2 + normY * height,
-      };
-      return {
-        normX,
-        normY,
-        pixelX: Math.round(normX * (video.videoWidth - 1)),
-        pixelY: Math.round(normY * (video.videoHeight - 1)),
-      };
-    }
-    const result = videoPoint(
-      rect,
+    return videoPoint(
+      video.getBoundingClientRect(),
       video.videoWidth,
       video.videoHeight,
       e.clientX,
       e.clientY,
     );
-    if (result)
-      virtualPoint.current = { normX: result.normX, normY: result.normY };
-    return result;
   };
 
   // Coalesce events per animation frame, retaining the final pointer position.
   const handleMouseMove = (e: MouseEvent<HTMLVideoElement>) => {
     if (role === "host" || !allowed) return;
-    const coords = getNormalizedCoords(e, true);
+    const coords = getNormalizedCoords(e);
     if (!coords) return;
     pendingMove.current = coords;
     if (frame.current) return;
     frame.current = requestAnimationFrame(() => {
       frame.current = 0;
-      if (document.pointerLockElement && pendingCursor.current)
-        setLocalCursor(pendingCursor.current);
       const point = pendingMove.current;
       pendingMove.current = null;
       if (!allowedNow.current || !point) return;
@@ -342,11 +250,6 @@ export function useRemoteInputCapture({
   // Captura de teclado com foco
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (role === "host" || !allowed) return;
-    if (e.key === "Escape" && document.pointerLockElement) {
-      e.preventDefault();
-      document.exitPointerLock();
-      return;
-    }
     const dc = dataChannelRef.current;
     if (!dc || dc.readyState !== "open") return;
 
@@ -409,10 +312,6 @@ export function useRemoteInputCapture({
   };
 
   return {
-    mouseCaptured,
-    localCursor,
-    captureError,
-    toggleMouseCapture,
     isKeyboardFocused,
     setIsKeyboardFocused,
     hostControlEnabled,
