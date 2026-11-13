@@ -1,4 +1,8 @@
 import {
+  validRemoteKeyboard,
+  validRemoteMouse,
+} from "../../shared/remoteInput";
+import {
   useCallback,
   useEffect,
   useRef,
@@ -83,9 +87,8 @@ export function useWebRTCPeer({
           }
           if (role !== "host" || !policy.current.control) return;
           if (
-            ["mouse", "keyboard"].includes(m.type) &&
-            m.data &&
-            typeof m.data === "object"
+            (m.type === "mouse" && validRemoteMouse(m.data)) ||
+            (m.type === "keyboard" && validRemoteKeyboard(m.data))
           )
             input.current?.(m);
         } catch {
@@ -141,7 +144,10 @@ export function useWebRTCPeer({
       localStreamRef.current = stream;
       if (role === "host")
         void window.electronAPI
-          .toggleInputControl(policy.current.control)
+          .confirmCaptureReady()
+          .then(() =>
+            window.electronAPI.toggleInputControl(policy.current.control),
+          )
           .catch(() => {});
       if (dataChannelRef.current?.readyState === "open")
         dataChannelRef.current.send(
@@ -152,6 +158,7 @@ export function useWebRTCPeer({
         void localVideoRef.current.play().catch(() => {});
       }
       setIsSharing(true);
+      setPeerState(pcRef.current?.connectionState || "connecting");
       stream.getVideoTracks()[0].addEventListener("ended", () => {
         if (localStreamRef.current !== stream) return;
         if (dataChannelRef.current?.readyState === "open")
@@ -198,6 +205,7 @@ export function useWebRTCPeer({
       onFilesChannelReady?.(files);
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
+      if (epoch !== generation.current) return;
       onSendSignalingMessage?.("offer", { sdp: offer.sdp });
     } catch {
       if (epoch === generation.current) {
@@ -220,14 +228,32 @@ export function useWebRTCPeer({
     onFilesChannelReady,
     onSendSignalingMessage,
   ]);
-  useEffect(()=>window.electronAPI.onCaptureUnavailable(()=>{
-    if(role!=='host')return;localStreamRef.current?.getTracks().forEach(t=>t.stop());setIsSharing(false);setPeerState('capture-ended');setError('A fonte compartilhada não está mais disponível. Escolha outra tela ou janela.');if(dataChannelRef.current?.readyState==='open')dataChannelRef.current.send(JSON.stringify({type:'capture-status',active:false}));
-  }),[role]);
+  useEffect(
+    () =>
+      window.electronAPI.onCaptureUnavailable(() => {
+        if (role !== "host") return;
+        localStreamRef.current?.getTracks().forEach((t) => t.stop());
+        setIsSharing(false);
+        setPeerState("capture-ended");
+        setError(
+          "A fonte compartilhada não está mais disponível. Escolha outra tela ou janela.",
+        );
+        if (dataChannelRef.current?.readyState === "open")
+          dataChannelRef.current.send(
+            JSON.stringify({ type: "capture-status", active: false }),
+          );
+      }),
+    [role],
+  );
   const switchToRealScreen = useCallback(async () => {
     if (!pcRef.current) {
       await startSharing();
       return;
     }
+    const epoch = ++generation.current,
+      activePc = pcRef.current;
+    localStreamRef.current?.getTracks().forEach((t) => t.stop());
+    setIsSharing(false);
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: {
@@ -237,6 +263,10 @@ export function useWebRTCPeer({
         },
         audio: false,
       });
+      if (epoch !== generation.current || activePc !== pcRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
       const track = stream.getVideoTracks()[0];
       if (!track) throw Error("No video");
       const sender = pcRef.current
@@ -252,6 +282,13 @@ export function useWebRTCPeer({
       old?.getTracks().forEach((t) => t.stop());
       setError(null);
     } catch {
+      if (epoch !== generation.current) return;
+      setIsSharing(false);
+      setPeerState("capture-failed");
+      if (dataChannelRef.current?.readyState === "open")
+        dataChannelRef.current.send(
+          JSON.stringify({ type: "capture-status", active: false }),
+        );
       setError(
         "Não foi possível trocar a captura. Escolha uma fonte disponível e tente novamente.",
       );

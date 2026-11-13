@@ -20,3 +20,40 @@ export function normalizedPoint(
     y: Math.round(bounds.y + y * (bounds.height - 1)),
   };
 }
+
+export function videoPoint(
+  rect: { left: number; top: number; width: number; height: number },
+  videoWidth: number,
+  videoHeight: number,
+  clientX: number,
+  clientY: number,
+) {
+  if (
+    ![
+      rect.left,
+      rect.top,
+      rect.width,
+      rect.height,
+      videoWidth,
+      videoHeight,
+      clientX,
+      clientY,
+    ].every(Number.isFinite) ||
+    Math.min(rect.width, rect.height, videoWidth, videoHeight) <= 0
+  )
+    return null;
+  const scale = Math.min(rect.width / videoWidth, rect.height / videoHeight),
+    width = videoWidth * scale,
+    height = videoHeight * scale;
+  const x = clientX - rect.left - (rect.width - width) / 2,
+    y = clientY - rect.top - (rect.height - height) / 2;
+  if (x < 0 || y < 0 || x > width || y > height) return null;
+  const normX = x / width,
+    normY = y / height;
+  return {
+    normX,
+    normY,
+    pixelX: Math.round(normX * (videoWidth - 1)),
+    pixelY: Math.round(normY * (videoHeight - 1)),
+  };
+}

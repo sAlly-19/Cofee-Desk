@@ -21,10 +21,17 @@ jobs:
             signaling-server/package-lock.json
       - run: npm ci
       - run: npm ci --prefix signaling-server
+      - run: npm run lint
       - run: npm run typecheck
       - run: npm run build --prefix signaling-server
       - run: npm run build:admin
+      - run: npm run build
       - run: npm run test:security
+      - run: npm run test:reliability
+      - run: npm run test:history
+      - run: npm run test:update-ui
+      - run: npm run test:recovery
+      - run: npm run verify:startup
       - if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
         run: npm run package:win
         env:

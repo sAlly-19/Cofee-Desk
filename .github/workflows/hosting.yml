@@ -22,5 +22,6 @@ jobs:
       - run: npm run test:client-config
       - run: npm run typecheck
       - run: npm run build:electron
+      - run: npm run test:reliability
       - run: npm run test:hosting
       - run: npm run test:security

@@ -1,3 +1,4 @@
+import { validRemoteKeyboard, validRemoteMouse } from "../shared/remoteInput";
 import { normalizedPoint } from "../shared/geometry";
 import { assertTrusted } from "./ipcSecurity";
 import {
@@ -63,13 +64,13 @@ const CODE_TO_VK: Record<string, number> = {
 };
 
 function getVkCode(code: string, key?: string): number {
-  if (CODE_TO_VK[code]) return CODE_TO_VK[code];
+  if (Object.hasOwn(CODE_TO_VK, code)) return CODE_TO_VK[code];
 
-  if (code.startsWith("Key") && code.length === 4) {
+  if (/^Key[A-Z]$/.test(code)) {
     return code.charCodeAt(3); // 'KeyA' -> 65 (0x41)
   }
 
-  if (code.startsWith("Digit") && code.length === 6) {
+  if (/^Digit[0-9]$/.test(code)) {
     return code.charCodeAt(5); // 'Digit1' -> 49 (0x31)
   }
 
@@ -80,7 +81,7 @@ function getVkCode(code: string, key?: string): number {
 
   if (key && key.length === 1) {
     const upper = key.toUpperCase();
-    return upper.charCodeAt(0);
+    return upper.charCodeAt(0) <= 255 ? upper.charCodeAt(0) : 0;
   }
 
   return 0;
@@ -242,7 +243,7 @@ export function registerInputIpcHandlers(): void {
     if (
       !enabledSenders.has(event.sender.id) ||
       !hasPermission(event.sender.id, "control") ||
-      !data
+      !validRemoteMouse(data)
     )
       return;
 
@@ -300,8 +301,7 @@ export function registerInputIpcHandlers(): void {
       if (
         !enabledSenders.has(event.sender.id) ||
         !hasPermission(event.sender.id, "control") ||
-        !data ||
-        typeof data.code !== "string"
+        !validRemoteKeyboard(data)
       )
         return;
 
@@ -333,6 +333,8 @@ export function registerInputIpcHandlers(): void {
     IPC_CHANNELS.REMOTE_CONTROL_TOGGLE,
     (event, enabled?: boolean) => {
       assertTrusted(event);
+      if (enabled !== undefined && typeof enabled !== "boolean")
+        throw Error("Argumento inválido");
       const requested =
         enabled !== undefined ? enabled : !enabledSenders.has(event.sender.id);
       if (requested && !hasPermission(event.sender.id, "control")) return false;

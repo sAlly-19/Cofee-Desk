@@ -10,7 +10,10 @@ const {
   shouldCheckUpdate,
 } = require("../dist-electron/main/updaterCore");
 const { sanitizedDiagnostic } = require("../dist-electron/shared/diagnostics");
-const { normalizedPoint } = require("../dist-electron/shared/geometry");
+const {
+  normalizedPoint,
+  videoPoint,
+} = require("../dist-electron/shared/geometry");
 const checks = [];
 function check(name, condition) {
   assert.ok(condition, name);
@@ -105,13 +108,85 @@ function fixture(options = {}) {
   };
 }
 async function run() {
-  const {matchesDevice,filterHistory}=require('../dist-electron/shared/history');
-  check('Automatic checks wait 24 hours',!shouldCheckUpdate(100000,100001)&&shouldCheckUpdate(100000,86500000)&&shouldCheckUpdate(0,1));
-  check('Clock rollback allows recovery check',shouldCheckUpdate(1000,999));
-  check('Device search supports accents and grouped ID',matchesDevice({name:'Máquina Café',remoteId:'123-456-789'},'cafe')&&matchesDevice({name:'Device',remoteId:'123-456-789'},'123 456'));
-  check('Search does not match arbitrary punctuation',!matchesDevice({name:'Device',remoteId:'123-456-789'},'---'));
-  const history=[{id:'1',name:'Old name',remoteId:'123-456-789',result:'rejected'},{id:'2',name:'Other',remoteId:'987-654-321',result:'completed'}];
-  check('History searches renamed aliases with result filters',filterHistory(history,'Novo','rejected',[{name:'Novo nome',remoteId:'123-456-789'}]).length===1&&filterHistory(history,'Novo','completed',[{name:'Novo nome',remoteId:'123-456-789'}]).length===0);
+  const {
+    validRemoteKeyboard,
+    validRemoteMouse,
+  } = require("../dist-electron/shared/remoteInput");
+  check(
+    "Keyboard rejects objects masquerading as strings",
+    !validRemoteKeyboard({
+      type: "down",
+      code: "Unknown",
+      key: { length: 1 },
+    }) &&
+      !validRemoteKeyboard({
+        type: "text",
+        code: "",
+        key: "",
+        text: { length: 1 },
+      }),
+  );
+  check(
+    "Keyboard rejects oversized or unknown events",
+    !validRemoteKeyboard({ type: "unknown", code: "KeyA", key: "a" }) &&
+      !validRemoteKeyboard({ type: "down", code: "a".repeat(65), key: "a" }),
+  );
+  check(
+    "Mouse rejects unknown type and non-finite positions",
+    !validRemoteMouse({ type: "unknown", normX: 0.5, normY: 0.5 }) &&
+      !validRemoteMouse({ type: "move", normX: NaN, normY: 0.5 }),
+  );
+
+  const rect = { left: 100, top: 100, width: 400, height: 400 };
+  check(
+    "Letterbox center maps to video center",
+    videoPoint(rect, 1920, 1080, 300, 300).normX === 0.5 &&
+      videoPoint(rect, 1920, 1080, 300, 300).normY === 0.5,
+  );
+  check(
+    "Letterbox bars reject input",
+    videoPoint(rect, 1920, 1080, 300, 110) === null &&
+      videoPoint(rect, 1080, 1920, 110, 300) === null,
+  );
+  check(
+    "No mapping before valid video metadata",
+    videoPoint(rect, 0, 0, 300, 300) === null &&
+      videoPoint(rect, 1920, 1080, NaN, 300) === null,
+  );
+
+  const {
+    matchesDevice,
+    filterHistory,
+  } = require("../dist-electron/shared/history");
+  check(
+    "Automatic checks wait 24 hours",
+    !shouldCheckUpdate(100000, 100001) &&
+      shouldCheckUpdate(100000, 86500000) &&
+      shouldCheckUpdate(0, 1),
+  );
+  check("Clock rollback allows recovery check", shouldCheckUpdate(1000, 999));
+  check(
+    "Device search supports accents and grouped ID",
+    matchesDevice({ name: "Máquina Café", remoteId: "123-456-789" }, "cafe") &&
+      matchesDevice({ name: "Device", remoteId: "123-456-789" }, "123 456"),
+  );
+  check(
+    "Search does not match arbitrary punctuation",
+    !matchesDevice({ name: "Device", remoteId: "123-456-789" }, "---"),
+  );
+  const history = [
+    { id: "1", name: "Old name", remoteId: "123-456-789", result: "rejected" },
+    { id: "2", name: "Other", remoteId: "987-654-321", result: "completed" },
+  ];
+  check(
+    "History searches renamed aliases with result filters",
+    filterHistory(history, "Novo", "rejected", [
+      { name: "Novo nome", remoteId: "123-456-789" },
+    ]).length === 1 &&
+      filterHistory(history, "Novo", "completed", [
+        { name: "Novo nome", remoteId: "123-456-789" },
+      ]).length === 0,
+  );
 
   const report = sanitizedDiagnostic(
     {

@@ -6,6 +6,7 @@ export interface NativeSession {
   callId: string;
   role: "host" | "client";
   permissions: SessionPermissions;
+  captureActive?: boolean;
   sourceKind?: "screen" | "window";
   sourceId?: string;
   bounds?: { x: number; y: number; width: number; height: number };
@@ -16,10 +17,14 @@ let installing = false;
 export const setInstalling = (value: boolean) => {
   installing = value;
 };
-type NativeSource = Pick<NativeSession, "sourceId" | "sourceKind" | "bounds">;
+type NativeSource = Pick<
+  NativeSession,
+  "sourceId" | "sourceKind" | "bounds" | "captureActive"
+>;
 const sources = new Map<number, NativeSource>();
 export const selectedSource = (sender: number) => sources.get(sender);
 export function prepareNativeSource(sender: number, source?: NativeSource) {
+  if (source) source = { ...source, captureActive: false };
   if (source) sources.set(sender, source);
   else sources.delete(sender);
   const current = sessions.get(sender);
@@ -29,6 +34,7 @@ export function prepareNativeSource(sender: number, source?: NativeSource) {
       sourceId: source?.sourceId,
       sourceKind: source?.sourceKind,
       bounds: source?.bounds,
+      captureActive: source?.captureActive,
     });
 }
 const listeners = new Set<(sender: number, state?: NativeSession) => void>();
@@ -42,7 +48,10 @@ export const hasPermission = (
     !!s &&
     s.permissions[permission] &&
     (permission !== "control" ||
-      (s.role === "host" && s.sourceKind === "screen" && !!s.bounds))
+      (s.role === "host" &&
+        s.sourceKind === "screen" &&
+        !!s.bounds &&
+        s.captureActive === true))
   );
 };
 export function onNativeSessionChange(
@@ -63,9 +72,27 @@ export function setNativeSession(sender: number, state?: NativeSession) {
   for (const listener of listeners) listener(sender, state);
 }
 export const isNativeBusy = () => sessions.size > 0 || pending.size > 0;
-const trackedOwners=new Set<number>();
-function trackOwner(sender:WebContents){if(trackedOwners.has(sender.id))return;trackedOwners.add(sender.id);sender.once('destroyed',()=>{trackedOwners.delete(sender.id);pending.delete(sender.id);setNativeSession(sender.id);});}
+const trackedOwners = new Set<number>();
+function trackOwner(sender: WebContents) {
+  if (trackedOwners.has(sender.id)) return;
+  trackedOwners.add(sender.id);
+  sender.once("destroyed", () => {
+    trackedOwners.delete(sender.id);
+    pending.delete(sender.id);
+    setNativeSession(sender.id);
+  });
+}
 export function registerSessionAuthority() {
+  ipcMain.handle("capture:ready", (event) => {
+    assertTrusted(event);
+    const current = nativeSession(event.sender.id),
+      source = selectedSource(event.sender.id);
+    if (current?.role !== "host" || !source)
+      throw Error("Captura não autorizada");
+    sources.set(event.sender.id, { ...source, captureActive: true });
+    setNativeSession(event.sender.id, current);
+    return true;
+  });
   ipcMain.handle("session:pending", (event, value: unknown) => {
     assertTrusted(event);
     if (typeof value !== "boolean" || installing)

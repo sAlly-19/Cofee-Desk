@@ -16,7 +16,15 @@ import type {
 
 // Permite que o renderer invoque o main de forma tipada e segura
 const electronAPI = {
- onCaptureUnavailable:(callback:()=>void)=>{const listener=()=>callback();ipcRenderer.on('capture:unavailable',listener);return()=>{ipcRenderer.removeListener('capture:unavailable',listener);};},
+  confirmCaptureReady: () =>
+    ipcRenderer.invoke("capture:ready") as Promise<boolean>,
+  onCaptureUnavailable: (callback: () => void) => {
+    const listener = () => callback();
+    ipcRenderer.on("capture:unavailable", listener);
+    return () => {
+      ipcRenderer.removeListener("capture:unavailable", listener);
+    };
+  },
   updater: {
     getState: () =>
       ipcRenderer.invoke("updater:getState") as Promise<UpdaterState>,

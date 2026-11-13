@@ -1,3 +1,4 @@
+import { videoPoint } from "../../shared/geometry";
 import {
   useState,
   useRef,
@@ -47,43 +48,13 @@ export function useRemoteInputCapture({
     const video = e.currentTarget;
     const rect = video.getBoundingClientRect();
 
-    const videoWidth = video.videoWidth || 1920;
-    const videoHeight = video.videoHeight || 1080;
-    const videoRatio = videoWidth / videoHeight;
-    const containerRatio = rect.width / rect.height;
-
-    let displayWidth = rect.width;
-    let displayHeight = rect.height;
-    let offsetX = 0;
-    let offsetY = 0;
-
-    if (containerRatio > videoRatio) {
-      displayWidth = rect.height * videoRatio;
-      offsetX = (rect.width - displayWidth) / 2;
-    } else {
-      displayHeight = rect.width / videoRatio;
-      offsetY = (rect.height - displayHeight) / 2;
-    }
-
-    const clickX = e.clientX - rect.left - offsetX;
-    const clickY = e.clientY - rect.top - offsetY;
-
-    if (
-      clickX < 0 ||
-      clickY < 0 ||
-      clickX > displayWidth ||
-      clickY > displayHeight
-    )
-      return null;
-    const normX = Math.max(0, Math.min(1, clickX / displayWidth));
-    const normY = Math.max(0, Math.min(1, clickY / displayHeight));
-
-    return {
-      normX,
-      normY,
-      pixelX: Math.round(normX * videoWidth),
-      pixelY: Math.round(normY * videoHeight),
-    };
+    return videoPoint(
+      rect,
+      video.videoWidth,
+      video.videoHeight,
+      e.clientX,
+      e.clientY,
+    );
   };
 
   // Movimento suave com throttling a ~60fps

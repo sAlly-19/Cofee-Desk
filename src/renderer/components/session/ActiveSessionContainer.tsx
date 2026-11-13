@@ -1,3 +1,4 @@
+import { useSessionClipboard } from "../../hooks/useSessionClipboard";
 import type { SessionPermissions } from "../../../shared/session";
 import { SourcePicker } from "./SourcePicker";
 import { PermissionsFields } from "./PermissionsFields";
@@ -51,6 +52,11 @@ export function ActiveSessionContainer({
   const [filesDataChannel, setFilesDataChannel] =
     useState<RTCDataChannel | null>(null);
 
+  const clipboard = useSessionClipboard({
+    isConnected: true,
+    dataChannel: filesDataChannel,
+    allowed: permissions.clipboard,
+  });
   // Hook central de transferência de arquivos P2P com fila e flow control
   const {
     transfers,
@@ -303,12 +309,7 @@ export function ActiveSessionContainer({
             }}
           >
             {activeDrawer === "clipboard" ? (
-              <ClipboardSync
-                connectionId={connectionId}
-                isConnected={true}
-                dataChannel={filesDataChannel}
-                allowed={permissions.clipboard}
-              />
+              <ClipboardSync model={clipboard} />
             ) : (
               <FileTransfer
                 connectionId={connectionId}

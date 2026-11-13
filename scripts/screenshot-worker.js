@@ -66,7 +66,7 @@ async function fill(win, selector, value) {
     win,
     "(() => {const el=document.querySelector(" +
       JSON.stringify(selector) +
-      '); if (!el) return false; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(el,' +
+      '); if (!el) return false; Object.getOwnPropertyDescriptor(el instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,"value").set.call(el,' +
       JSON.stringify(value) +
       '); el.dispatchEvent(new Event("input",{bubbles:true})); return true;})()',
   );
@@ -132,7 +132,9 @@ async function create(partition, width = 1672, height = 941) {
         types: ["screen", "window"],
       });
       const selected = source && sources.find((s) => s.id === source.sourceId);
-      callback(active?.role === "host" && selected ? { video: selected } : {});
+      callback(
+        active?.role === "host" && selected ? { video: selected } : null,
+      );
     },
   );
   if (partition.startsWith("redesign-first"))
@@ -434,6 +436,24 @@ async function run() {
       peer,
       '[...document.querySelectorAll("button")].some(b=>b.textContent.includes("Aceitar e Compartilhar")&&!b.disabled)',
     );
+    for (const device of [win, peer])
+      await js(device, () => {
+        window.__testChannels = [];
+        const Original = window.RTCPeerConnection;
+        window.RTCPeerConnection = class extends Original {
+          constructor(...args) {
+            super(...args);
+            this.addEventListener("datachannel", (e) =>
+              window.__testChannels.push(e.channel),
+            );
+          }
+          createDataChannel(...args) {
+            const channel = super.createDataChannel(...args);
+            window.__testChannels.push(channel);
+            return channel;
+          }
+        };
+      });
     await click(peer, "Aceitar e Compartilhar");
     check(
       "Accepted call opens session",
@@ -518,7 +538,43 @@ async function run() {
       await until(win, '!!document.querySelector(".session-drawer")'),
     );
     await js(win, () =>
+      document.querySelector('.clipboard-panel input[type="checkbox"]').click(),
+    );
+    await fill(
+      win,
+      'textarea[aria-label="Meu clipboard"]',
+      "coffee-clipboard-real-channel",
+    );
+    await click(win, "Enviar ao remoto");
+    check(
+      "Clipboard text crosses real channel with host panel closed",
+      await until(
+        peer,
+        'window.electronAPI.readSessionClipboard().then(t=>t==="coffee-clipboard-real-channel")',
+      ),
+    );
+    await js(win, () =>
+      document.querySelector('.clipboard-panel input[type="checkbox"]').click(),
+    );
+    await js(win, () =>
       document.querySelector('button[title="Fechar painel"]').click(),
+    );
+    await js(peer, () =>
+      window.__testChannels
+        .find((c) => c.label === "coffee-desk-files")
+        .send(
+          JSON.stringify({
+            type: "clipboard-text",
+            text: "coffee-clipboard-closed-panel",
+          }),
+        ),
+    );
+    check(
+      "Clipboard remains active when both panels are closed",
+      await until(
+        win,
+        'window.electronAPI.readSessionClipboard().then(t=>t==="coffee-clipboard-closed-panel")',
+      ),
     );
     await click(peer, "Tela e permissões");
     check(
@@ -526,6 +582,35 @@ async function run() {
       await until(
         peer,
         'document.querySelectorAll(".permission-fields input").length===3',
+      ),
+    );
+    await js(win, () => {
+      const original = Blob.prototype.arrayBuffer;
+      window.__restoreBlob = () => {
+        Blob.prototype.arrayBuffer = original;
+      };
+      Blob.prototype.arrayBuffer = async function () {
+        await new Promise((r) => setTimeout(r, 30));
+        return original.call(this);
+      };
+      const data = new DataTransfer();
+      data.items.add(
+        new File(
+          [new Uint8Array(4 * 1024 * 1024)],
+          "coffee-revocation-long.bin",
+        ),
+      );
+      document
+        .querySelector(".session-stage [tabindex]")
+        .dispatchEvent(
+          new DragEvent("drop", { dataTransfer: data, bubbles: true }),
+        );
+    });
+    check(
+      "Long transfer starts before permission revocation",
+      await until(
+        peer,
+        'document.body.textContent.includes("coffee-revocation-long.bin")',
       ),
     );
     for (let i = 0; i < 3; i++) {
@@ -567,6 +652,64 @@ async function run() {
         ),
       );
     }
+    await js(win, () => window.__restoreBlob?.());
+    check(
+      "Revoking files cancels active transfer without saving",
+      !fs.existsSync(path.join(out, "downloads", "coffee-revocation-long.bin")),
+    );
+    const inputCount = remoteInputs.length;
+    const beforeClipboard = await clipboard.readText();
+    await js(win, () => {
+      const files = window.__testChannels.find(
+          (c) => c.label === "coffee-desk-files",
+        ),
+        control = window.__testChannels.find(
+          (c) => c.label === "coffee-desk-control",
+        );
+      files.send(
+        JSON.stringify({
+          type: "clipboard-text",
+          text: "not-authorized-peer-payload",
+        }),
+      );
+      files.send(
+        JSON.stringify({
+          type: "file-meta",
+          fileId: "denied",
+          fileName: "denied-channel.txt",
+          fileSize: 4,
+          totalChunks: 1,
+        }),
+      );
+      files.send(
+        JSON.stringify({
+          type: "file-chunk",
+          fileId: "denied",
+          chunkIndex: 0,
+          data: "dGVzdA==",
+        }),
+      );
+      files.send(JSON.stringify({ type: "file-done", fileId: "denied" }));
+      control.send(
+        JSON.stringify({
+          type: "keyboard",
+          data: { type: "press", code: "F23", key: "F23" },
+        }),
+      );
+    });
+    await wait(400);
+    check(
+      "Denied control payload discarded before native IPC",
+      remoteInputs.length === inputCount,
+    );
+    check(
+      "Denied clipboard payload cannot modify OS clipboard",
+      (await clipboard.readText()) === beforeClipboard,
+    );
+    check(
+      "Denied file channel payload cannot create file",
+      !fs.existsSync(path.join(out, "downloads", "denied-channel.txt")),
+    );
     check(
       "Viewer toolbar reflects revocation",
       await js(
@@ -600,6 +743,92 @@ async function run() {
     await js(
       peer,
       'document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}))',
+    );
+    const surface = new BrowserWindow({
+      width: 640,
+      height: 480,
+      show: false,
+      title: "Coffee Desk capture fixture",
+      webPreferences: { contextIsolation: true, nodeIntegration: false },
+    });
+    await surface.loadURL(
+      "data:text/html;charset=utf-8," +
+        encodeURIComponent(
+          '<title>Coffee Desk capture fixture</title><body style="background:#432012;color:#ffe0b0;font:30px sans-serif">Coffee Desk: fonte de teste</body>',
+        ),
+    );
+    surface.showInactive();
+    const windowSource = surface.getMediaSourceId();
+    await click(peer, "Tela e permissões");
+    await until(
+      peer,
+      '[...document.querySelectorAll(".source-picker option")].some(o=>o.value===' +
+        JSON.stringify(windowSource) +
+        ")",
+    );
+    await js(
+      peer,
+      '(()=>{const select=document.querySelector(".source-picker select");select.value=' +
+        JSON.stringify(windowSource) +
+        ';select.dispatchEvent(new Event("change",{bubbles:true}));})()',
+    );
+    await click(peer, "Compartilhar fonte selecionada");
+    check(
+      "Actual window can replace monitor capture",
+      await until(
+        peer,
+        '[...document.querySelectorAll("video")].some(v=>v.srcObject?.getVideoTracks()[0]?.getSettings().displaySurface==="window"&&v.srcObject.getVideoTracks()[0].readyState==="live")&&!document.querySelector(".modal-panel")',
+      ),
+    );
+    check(
+      "Window source never authorizes native control",
+      await js(
+        peer,
+        "window.electronAPI.toggleInputControl(true).then(v=>v===false)",
+      ),
+    );
+    surface.destroy();
+    check(
+      "Closing shared window pauses capture",
+      await until(
+        peer,
+        'document.body.textContent.includes("Escolha outra tela ou janela")',
+        8000,
+      ),
+    );
+    check(
+      "Viewer notified when shared source closes",
+      await until(
+        win,
+        'document.body.textContent.includes("compartilhamento foi pausado")',
+      ),
+    );
+    await click(peer, "Tela e permissões");
+    await until(
+      peer,
+      '[...document.querySelectorAll(".source-picker option")].some(o=>o.value.startsWith("screen:"))',
+    );
+    await js(peer, () => {
+      const select = document.querySelector(".source-picker select");
+      select.value = [...select.options].find((o) =>
+        o.value.startsWith("screen:"),
+      ).value;
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await click(peer, "Compartilhar fonte selecionada");
+    check(
+      "Monitor capture resumes after source replacement",
+      await until(
+        win,
+        '!document.body.textContent.includes("compartilhamento foi pausado")',
+      ),
+    );
+    check(
+      "Returning to monitor preserves revoked control",
+      await js(
+        peer,
+        "window.electronAPI.toggleInputControl(true).then(v=>v===false)",
+      ),
     );
     // Capturing a hidden surface containing a live desktop video can fail with
     // UnknownVizError on Windows. Dashboard captures below do not depend on it.

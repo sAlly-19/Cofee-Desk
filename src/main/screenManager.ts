@@ -1,4 +1,10 @@
-import { desktopCapturer, ipcMain, session, screen, webContents } from "electron";
+import {
+  desktopCapturer,
+  ipcMain,
+  session,
+  screen,
+  webContents,
+} from "electron";
 import { IPC_CHANNELS } from "../shared/ipcChannels";
 import type { DesktopSource } from "../shared/types";
 import { assertTrusted } from "./ipcSecurity";
@@ -40,13 +46,51 @@ export async function selectDesktopSource(sender: number, sourceId: string) {
   return { success: true, sourceId, kind };
 }
 export function registerScreenIpcHandlers(): void {
-  let inspecting=false;
-  const invalidate=(id:number)=>{prepareNativeSource(id);const owner=webContents.fromId(id);if(owner&&!owner.isDestroyed())owner.send('capture:unavailable');};
-  const timer=setInterval(()=>{if(inspecting)return;const hosts=webContents.getAllWebContents().filter(w=>nativeSession(w.id)?.role==='host'&&selectedSource(w.id));if(!hosts.length)return;inspecting=true;
-    void desktopCapturer.getSources({types:['screen','window'],thumbnailSize:{width:0,height:0}}).then(available=>{for(const owner of hosts){const selected=selectedSource(owner.id);if(selected&&!available.some(s=>s.id===selected.sourceId))invalidate(owner.id);}}).catch(()=>{/* A transient enumeration failure does not choose another source. */}).finally(()=>{inspecting=false;});
-  },2000);timer.unref();
-  const topology=()=>{for(const owner of webContents.getAllWebContents())if(nativeSession(owner.id)?.role==='host'&&selectedSource(owner.id)?.sourceKind==='screen')invalidate(owner.id);};
-  screen.on('display-removed',topology);screen.on('display-metrics-changed',topology);
+  let inspecting = false;
+  const invalidate = (id: number) => {
+    prepareNativeSource(id);
+    const owner = webContents.fromId(id);
+    if (owner && !owner.isDestroyed()) owner.send("capture:unavailable");
+  };
+  const timer = setInterval(() => {
+    if (inspecting) return;
+    const hosts = webContents
+      .getAllWebContents()
+      .filter(
+        (w) => nativeSession(w.id)?.role === "host" && selectedSource(w.id),
+      );
+    if (!hosts.length) return;
+    inspecting = true;
+    void desktopCapturer
+      .getSources({
+        types: ["screen", "window"],
+        thumbnailSize: { width: 0, height: 0 },
+      })
+      .then((available) => {
+        for (const owner of hosts) {
+          const selected = selectedSource(owner.id);
+          if (selected && !available.some((s) => s.id === selected.sourceId))
+            invalidate(owner.id);
+        }
+      })
+      .catch(() => {
+        /* A transient enumeration failure does not choose another source. */
+      })
+      .finally(() => {
+        inspecting = false;
+      });
+  }, 2000);
+  timer.unref();
+  const topology = () => {
+    for (const owner of webContents.getAllWebContents())
+      if (
+        nativeSession(owner.id)?.role === "host" &&
+        selectedSource(owner.id)?.sourceKind === "screen"
+      )
+        invalidate(owner.id);
+  };
+  screen.on("display-removed", topology);
+  screen.on("display-metrics-changed", topology);
 
   session.defaultSession.setPermissionCheckHandler(
     (_contents, permission) =>
@@ -61,7 +105,7 @@ export function registerScreenIpcHandlers(): void {
       try {
         const sender = request.frame?.processId;
         // Match the exact main frame, not a renderer-provided webContents id.
-          const owner = webContents
+        const owner = webContents
           .getAllWebContents()
           .find((w) => w.mainFrame === request.frame);
         if (!owner || sender === undefined)
@@ -76,7 +120,7 @@ export function registerScreenIpcHandlers(): void {
         if (!source) throw new Error("Fonte encerrada");
         callback({ video: source });
       } catch {
-        callback({});
+        callback(null);
       }
     },
   );
