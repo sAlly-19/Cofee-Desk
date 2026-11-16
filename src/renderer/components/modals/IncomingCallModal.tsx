@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   PhoneIncoming,
   Monitor,
   ShieldCheck,
   Eye,
   Check,
-  ArrowUpRight,
+  Clock,
 } from "lucide-react";
 import { Modal } from "../ui/Modal";
 import { SourcePicker } from "../session/SourcePicker";
@@ -34,95 +34,114 @@ function Call({
 }: Props & { incomingCall: IncomingCall }) {
   const [permissions, setPermissions] = useState({ ...FULL_PERMISSIONS }),
     [source, setSource] = useState(""),
-    [kind, setKind] = useState<"screen" | "window">("screen");
-  const full =
-      permissions.control && permissions.clipboard && permissions.files,
-    viewOnly =
-      !permissions.control && !permissions.clipboard && !permissions.files;
+    [kind, setKind] = useState<"screen" | "window">("screen"),
+    [viewOnly, setViewOnly] = useState(false);
+  const clicked = useRef(false);
+  if (!answering && error) clicked.current = false;
+  const expired = countdown <= 0 && !answering,
+    locked = answering || expired;
   return (
     <Modal
       isOpen
-      onClose={() => onReject(incomingCall.fromId)}
+      onClose={() => {
+        if (!answering) onReject(incomingCall.fromId);
+      }}
       closeOnBackdrop={false}
-      title="Solicitação de sessão"
-      subtitle="Um computador está solicitando acesso remoto."
-      icon={<PhoneIncoming size={24} />}
-      maxWidth={620}
+      title="Solicitação de acesso"
+      subtitle="Um computador deseja se conectar a este dispositivo."
+      icon={<PhoneIncoming size={22} />}
+      maxWidth={760}
       footer={
-        <div className="request-actions">
+        <div className="access-request-footer">
+          <span className="request-time" role="status">
+            <Clock size={15} />
+            {expired
+              ? "Solicitação expirada"
+              : answering
+                ? "Confirmando…"
+                : Math.max(0, countdown) + " s restantes"}
+          </span>
           <button
-            className="secondary-button request-reject"
+            className="secondary-button"
+            disabled={answering}
             onClick={() => onReject(incomingCall.fromId)}
           >
-            Recusar
+            {expired ? "Fechar" : "Recusar"}
           </button>
           <button
-            className="primary-button request-accept"
-            disabled={!source || answering}
-            onClick={() =>
+            className="primary-button"
+            disabled={!source || locked}
+            onClick={() => {
+              if (clicked.current) return;
+              clicked.current = true;
               onAccept(
                 incomingCall.fromId,
-                {
-                  ...permissions,
-                  control: kind === "screen" && permissions.control,
-                },
+                viewOnly
+                  ? { ...VIEW_ONLY }
+                  : {
+                      ...permissions,
+                      control: kind === "screen" && permissions.control,
+                    },
                 source,
-              )
-            }
+              );
+            }}
           >
-            {answering ? (
-              "Confirmando…"
-            ) : !source ? (
-              "Preparando fontes…"
-            ) : (
-              <>
-                <Check size={18} />
-                Aceitar e Compartilhar
-                <ArrowUpRight size={17} />
-              </>
-            )}
+            <Check size={17} />
+            {answering ? "Confirmando…" : "Aceitar e Compartilhar"}
           </button>
         </div>
       }
     >
-      <section className="session-request">
-        <p className="request-access-note">Mouse independente experimental: não move o cursor do Windows. Alguns programas podem não aceitar esse controle.</p>
-        <div className="request-device">
-          <span className="request-device-icon">
-            <Monitor size={28} />
-          </span>
+      <section className="access-request">
+        <div className="access-request-device">
+          <Monitor size={24} />
           <div>
-            <span className="request-eyebrow">COMPUTADOR SOLICITANTE</span>
+            <span>Computador solicitante</span>
             <strong className="font-mono">{incomingCall.fromId}</strong>
-            <span>Deseja se conectar a este computador</span>
           </div>
-          <span className="request-live-dot" aria-hidden="true" />
+          <small>
+            {expired
+              ? "Expirada"
+              : answering
+                ? "Em confirmação"
+                : "Aguardando autorização"}
+          </small>
         </div>
-        <div className="request-section-title">
-          <ShieldCheck size={17} />
-          <strong>Você escolhe o acesso</strong>
-        </div>
-        <div className="request-profiles">
+        <div
+          className="request-profiles"
+          role="group"
+          aria-label="Nível de acesso"
+        >
           <button
             type="button"
-            aria-pressed={Boolean(full)}
-            disabled={answering}
-            onClick={() => setPermissions({ ...FULL_PERMISSIONS })}
+            aria-pressed={!viewOnly}
+            disabled={locked}
+            onClick={() => {
+              setViewOnly(false);
+              setPermissions({
+                ...FULL_PERMISSIONS,
+                control: kind === "screen",
+              });
+            }}
           >
-            <ShieldCheck size={18} />
+            <ShieldCheck size={19} />
             <span>
-              Acesso completo<small>Controle, clipboard e arquivos</small>
+              Acesso completo<small>Escolha os recursos permitidos</small>
             </span>
           </button>
           <button
             type="button"
             aria-pressed={viewOnly}
-            disabled={answering}
-            onClick={() => setPermissions({ ...VIEW_ONLY })}
+            disabled={locked}
+            onClick={() => {
+              setViewOnly(true);
+              setPermissions({ ...VIEW_ONLY });
+            }}
           >
-            <Eye size={18} />
+            <Eye size={19} />
             <span>
-              Apenas visualização<small>Sem controlar este computador</small>
+              Apenas visualização
+              <small>Sem controle, clipboard ou arquivos</small>
             </span>
           </button>
         </div>
@@ -130,61 +149,34 @@ function Call({
           value={permissions}
           onChange={setPermissions}
           windowOnly={kind === "window"}
-          disabled={answering}
+          disabled={locked || viewOnly}
         />
-        <details className="request-source">
-          <summary>
-            <Monitor size={17} />
-            <span>O que compartilhar</span>
-            <strong>
-              {!source
-                ? "Carregando fontes…"
-                : kind === "window"
-                  ? "Janela selecionada"
-                  : "Monitor selecionado"}
-            </strong>
-          </summary>
-          <SourcePicker
-            value={source}
-            onChange={(id, k) => {
-              setSource(id);
-              setKind(k);
-            }}
-            disabled={answering}
-          />
-        </details>
-        <p className="request-access-note">
-          Ao aceitar uma sessão de monitor, o acesso inclui alternar entre seus
-          monitores, sem novas confirmações. Você pode ajustar permissões ou
-          encerrar a sessão a qualquer momento.
+        <SourcePicker
+          value={source}
+          disabled={locked}
+          onChange={(id, k) => {
+            setSource(id);
+            setKind(k);
+            if (k === "window")
+              setPermissions((p) => ({ ...p, control: false }));
+          }}
+        />
+        <p className="access-request-note">
+          {kind === "screen"
+            ? "O acesso permite alternar entre seus monitores, sem novas confirmações."
+            : "Somente a janela escolhida será transmitida, sem controle remoto."}{" "}
+          Você pode revogar recursos ou encerrar o acesso durante a sessão.
         </p>
         {error && (
           <p role="alert" className="settings-error">
             {error}
           </p>
         )}
-        <div className="request-expiration">
-          <span>
-            {answering
-              ? "Aguardando confirmação segura do servidor…"
-              : "Aguardando sua autorização"}
-          </span>
-          <strong>{Math.max(0, countdown)} s</strong>
-        </div>
-        <div
-          className="call-countdown"
-          role="progressbar"
-          aria-label="Tempo para responder"
-          aria-valuenow={countdown}
-          aria-valuemin={0}
-          aria-valuemax={30}
-        >
-          <span
-            style={{
-              width: Math.max(0, Math.min(100, (countdown / 30) * 100)) + "%",
-            }}
-          />
-        </div>
+        {expired && (
+          <p role="status" className="settings-error">
+            O tempo de resposta terminou. Peça uma nova solicitação.
+          </p>
+        )}
       </section>
     </Modal>
   );

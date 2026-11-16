@@ -302,6 +302,23 @@ export function useRemoteInputCapture({
     );
   };
 
+  useEffect(() => {
+    if (role !== "host") return;
+    let active = true;
+    const refresh = () =>
+      void window.electronAPI
+        .getInputControlStatus()
+        .then((s) => {
+          if (active) setHostControlEnabled(s.enabled);
+        })
+        .catch(() => {});
+    refresh();
+    const timer = setInterval(refresh, 1000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [role, allowed]);
   const toggleHostControl = async () => {
     if (window.electronAPI?.toggleInputControl) {
       const newState = await window.electronAPI.toggleInputControl();
@@ -312,6 +329,7 @@ export function useRemoteInputCapture({
   };
 
   return {
+    releaseInput: release,
     isKeyboardFocused,
     setIsKeyboardFocused,
     hostControlEnabled,

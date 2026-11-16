@@ -17,10 +17,12 @@ export async function getDesktopSources(): Promise<DesktopSource[]> {
   const sources = await desktopCapturer.getSources({
     types: ["screen", "window"],
     thumbnailSize: { width: 240, height: 135 },
+    fetchWindowIcons: true,
   });
   return sources.map((s) => ({
     id: s.id,
     name: s.name,
+    appIcon: s.appIcon?.isEmpty() === false ? s.appIcon.toDataURL() : undefined,
     thumbnail: s.thumbnail.toDataURL(),
     displayId: s.display_id || "",
     isPrimary: s.display_id === String(screen.getPrimaryDisplay().id),

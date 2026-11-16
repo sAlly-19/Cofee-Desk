@@ -27,7 +27,7 @@ function online() {
   fs.mkdirSync(path.join(root, "artifacts/redesign"), { recursive: true });
   if (verify && !(await online())) {
     const { localDatabase } = await import("./local-database.mjs");
-    const db = await localDatabase("electron-postgres");
+    const db = await localDatabase("electron-postgres-" + process.pid);
     stopDatabase = db.stop;
     env.DATABASE_URL = db.url;
     env.ADMIN_ENCRYPTION_KEY = require("crypto")

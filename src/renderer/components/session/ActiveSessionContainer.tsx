@@ -1,3 +1,5 @@
+import type { DesktopSource } from "../../../shared/types";
+import type { SharedSourceInfo } from "./HostStreamView";
 import { useRemoteMonitors } from "../../hooks/useRemoteMonitors";
 import { useClipboardFiles } from "../../hooks/useClipboardFiles";
 import { useSessionClipboard } from "../../hooks/useSessionClipboard";
@@ -5,7 +7,7 @@ import type { SessionPermissions } from "../../../shared/session";
 import { SourcePicker } from "./SourcePicker";
 import { PermissionsFields } from "./PermissionsFields";
 import { Modal } from "../ui/Modal";
-import { useState, useEffect } from "react";
+import { useRef, useState, useEffect } from "react";
 import { X, ClipboardList, FolderSync } from "lucide-react";
 import { RemoteStreamView } from "../RemoteStreamView";
 import { ClipboardSync } from "../ClipboardSync";
@@ -48,6 +50,43 @@ export function ActiveSessionContainer({
     [source, setSource] = useState("");
   const [newKind, setNewKind] = useState<"screen" | "window">(sourceKind);
   const [sourceError, setSourceError] = useState("");
+  const [sourceBusy, setSourceBusy] = useState(false),
+    [permissionBusy, setPermissionBusy] = useState(false);
+  const [sourceInfo, setSourceInfo] = useState<SharedSourceInfo | null>(null);
+  useEffect(() => {
+    if (role !== "host") return;
+    let active = true;
+    const refresh = async () => {
+      try {
+        const selected = await window.electronAPI.getCaptureSelection();
+        const sources: DesktopSource[] =
+          await window.electronAPI.getDesktopSources();
+        if (!active) return;
+        const actual = sources.find((s) => s.id === selected?.sourceId);
+        setSourceInfo((previous) =>
+          selected
+            ? {
+                name: actual?.name || "Fonte indisponível",
+                kind: selected.kind,
+                available: !!actual,
+              }
+            : previous
+              ? { ...previous, available: false }
+              : null,
+        );
+      } catch {
+        /* No fabricated source on enumeration errors. */
+      }
+    };
+    void refresh();
+    window.addEventListener("capture-source-changed", refresh);
+    const timer = setInterval(() => void refresh(), 5000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+      window.removeEventListener("capture-source-changed", refresh);
+    };
+  }, [role, showAccess]);
   const [mouseMode, setMouseMode] = useState<"virtual" | "shared">("virtual");
   const [activeDrawer, setActiveDrawer] = useState<
     "clipboard" | "files" | null
@@ -55,17 +94,69 @@ export function ActiveSessionContainer({
   const [filesDataChannel, setFilesDataChannel] =
     useState<RTCDataChannel | null>(null);
 
-  const monitors = useRemoteMonitors(filesDataChannel, role, async (id) => {
-    await window.electronAPI.startDesktopStream(id);
-    await onUpdatePermissions(
-      {
-        ...permissions,
-        control: sourceKind === "screen" && permissions.control,
-      },
-      "screen",
-    );
-    window.dispatchEvent(new Event("capture-source-changed"));
-  });
+  const openAccess = async () => {
+    setSourceError("");
+    try {
+      const selected = await window.electronAPI.getCaptureSelection();
+      setSource(selected?.sourceId || "");
+      setNewKind(selected?.kind || sourceKind);
+      setShowAccess(true);
+    } catch {
+      setSourceError("Não foi possível consultar a fonte atual.");
+      setShowAccess(true);
+    }
+  };
+  const applyCaptureChange = () =>
+    new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error("A captura não confirmou a troca.")),
+        20000,
+      );
+      window.dispatchEvent(
+        new CustomEvent("capture-source-change-request", {
+          detail: {
+            resolve: () => {
+              clearTimeout(timer);
+              window.dispatchEvent(new Event("capture-source-changed"));
+              resolve();
+            },
+            reject: () => {
+              clearTimeout(timer);
+              reject(new Error("Falha na captura selecionada."));
+            },
+          },
+        }),
+      );
+    });
+  const changingSource = useRef(false);
+  const changeSource = async (id: string, kind: "screen" | "window") => {
+    if (changingSource.current)
+      throw new Error("Uma troca de fonte já está em andamento.");
+    changingSource.current = true;
+    setSourceBusy(true);
+    let prepared = false;
+    try {
+      await window.electronAPI.startDesktopStream(id);
+      prepared = true;
+      await onUpdatePermissions(
+        { ...permissions, control: kind === "screen" && permissions.control },
+        kind,
+      );
+      await applyCaptureChange();
+    } catch (error) {
+      if (prepared) {
+        window.dispatchEvent(new Event("capture-pause-request"));
+        await window.electronAPI.stopDesktopStream().catch(() => {});
+      }
+      throw error;
+    } finally {
+      changingSource.current = false;
+      setSourceBusy(false);
+    }
+  };
+  const monitors = useRemoteMonitors(filesDataChannel, role, (id) =>
+    changeSource(id, "screen"),
+  );
   const clipboard = useSessionClipboard({
     isConnected: true,
     dataChannel: filesDataChannel,
@@ -114,104 +205,97 @@ export function ActiveSessionContainer({
         backgroundColor: "#040201",
       }}
     >
-      {role === "client" && (
-        <label className="session-monitor-picker">
-          Monitor
-          <select
-            aria-label="Monitor remoto"
-            disabled={monitors.pending || !monitors.monitors.length}
-            value={monitors.monitors.find((m) => m.selected)?.id || ""}
-            onChange={(e) => monitors.request(e.target.value)}
-          >
-            <option value="">Escolha um monitor</option>
-            {monitors.monitors.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-          {monitors.pending && (
-            <small role="status">Aguardando anfitrião…</small>
-          )}
-        </label>
-      )}
-      {role === "host" && (
-        <button
-          className="session-access-button secondary-button"
-          onClick={() => setShowAccess(true)}
-        >
-          Tela e permissões
-        </button>
-      )}
       <Modal
         isOpen={showAccess}
         onClose={() => setShowAccess(false)}
         title="Tela e permissões"
-        subtitle="Você pode revogar recursos a qualquer momento."
-      >
-        <label className="mouse-mode-choice">
-          Mouse do anfitrião
-          <select
-            aria-label="Modo do mouse remoto"
-            value={mouseMode}
-            onChange={async (e) => {
+        subtitle="Escolha a fonte e gerencie o acesso a este computador."
+        maxWidth={700}
+        footer={
+          <button
+            className="primary-button"
+            disabled={!source || sourceBusy || permissionBusy}
+            onClick={async () => {
+              if (sourceBusy) return;
+              setSourceBusy(true);
+              setSourceError("");
               try {
-                const mode = e.target.value as "virtual" | "shared";
-                await window.electronAPI.setMouseMode(mode);
-                setMouseMode(mode);
+                await changeSource(source, newKind);
+                setShowAccess(false);
               } catch {
-                setSourceError("Não foi possível alterar o modo do mouse.");
+                setSourceError(
+                  "Não foi possível atualizar o compartilhamento. Verifique a fonte e tente novamente.",
+                );
+              } finally {
+                setSourceBusy(false);
               }
             }}
           >
-            <option value="virtual">
-              Ponteiro independente (experimental)
-            </option>
-            <option value="shared">Cursor compartilhado do Windows</option>
-          </select>
-          <small>
-            O modo independente envia mensagens às janelas sem mover o cursor do
-            Windows. Alguns programas não aceitam esse tipo de controle. O
-            teclado continua usando o foco da área de trabalho.
-          </small>
-        </label>
-        <PermissionsFields
-          value={permissions}
-          windowOnly={sourceKind === "window"}
-          onChange={(p) => void onUpdatePermissions(p)}
-        />
+            {sourceBusy ? "Atualizando…" : "Atualizar compartilhamento"}
+          </button>
+        }
+      >
         <SourcePicker
           value={source}
+          disabled={sourceBusy || permissionBusy}
           onChange={(id, kind) => {
             setSource(id);
             setNewKind(kind);
+            setSourceError("");
           }}
         />
-        {sourceError && <p role="alert">{sourceError}</p>}
-        <button
-          className="primary-button"
-          disabled={!source}
-          onClick={async () => {
+        <PermissionsFields
+          value={permissions}
+          disabled={permissionBusy || sourceBusy}
+          windowOnly={newKind === "window"}
+          onChange={async (p) => {
+            setPermissionBusy(true);
+            setSourceError("");
             try {
-              await window.electronAPI.startDesktopStream(source);
-              await onUpdatePermissions(
-                {
-                  ...permissions,
-                  control: newKind === "screen" && permissions.control,
-                },
-                newKind,
-              );
-              window.dispatchEvent(new Event("capture-source-changed"));
-              setShowAccess(false);
+              await onUpdatePermissions(p);
             } catch {
               setSourceError(
-                "Não foi possível trocar a fonte. Atualize a lista e tente novamente.",
+                "Não foi possível confirmar as permissões. Tente novamente.",
               );
+            } finally {
+              setPermissionBusy(false);
             }
           }}
-        >
-          Compartilhar fonte selecionada
-        </button>
+        />
+        <details className="session-advanced">
+          <summary>Compatibilidade do mouse</summary>
+          <label className="mouse-mode-choice">
+            Mouse do anfitrião
+            <select
+              aria-label="Modo do mouse remoto"
+              value={mouseMode}
+              onChange={async (e) => {
+                try {
+                  const mode = e.target.value as "virtual" | "shared";
+                  await window.electronAPI.setMouseMode(mode);
+                  setMouseMode(mode);
+                } catch {
+                  setSourceError("Não foi possível alterar o modo do mouse.");
+                }
+              }}
+            >
+              <option value="virtual">
+                Ponteiro independente (experimental)
+              </option>
+              <option value="shared">Cursor compartilhado do Windows</option>
+            </select>
+            <small>
+              O modo independente envia mensagens às janelas sem mover o cursor
+              do Windows. Alguns programas não aceitam esse tipo de controle. O
+              teclado continua usando o foco da área de trabalho.
+            </small>
+          </label>
+        </details>
+        {sourceError && (
+          <p role="alert" className="settings-error">
+            {sourceError}
+          </p>
+        )}
       </Modal>
       {/* 100% Immersive Remote Stream Viewport */}
       <div
@@ -224,6 +308,9 @@ export function ActiveSessionContainer({
         }}
       >
         <RemoteStreamView
+          sourceInfo={sourceInfo}
+          monitors={monitors}
+          onOpenAccess={() => void openAccess()}
           connectionId={connectionId}
           permissions={permissions}
           remoteId={remoteId}

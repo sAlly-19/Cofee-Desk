@@ -49,7 +49,8 @@
     "test:update-ui": "node scripts/test-update-ui.js",
     "test:file-clipboard": "node scripts/test-file-clipboard.js",
     "test:pointer-capture": "node scripts/test-pointer-capture.js",
-    "test:virtual-mouse": "node scripts/test-virtual-mouse.js"
+    "test:virtual-mouse": "node scripts/test-virtual-mouse.js",
+    "test:session-ui": "node scripts/test-session-ui.js"
   },
   "dependencies": {
     "electron-squirrel-startup": "^1.0.1",

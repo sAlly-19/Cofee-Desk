@@ -9,13 +9,15 @@ export const diagnosticReport = (input: ConnectionDiagnostic) =>
   sanitizedDiagnostic(input, APP_VERSION);
 export function ConnectionDetails({
   diagnostic,
+  expanded = false,
 }: {
   diagnostic: ConnectionDiagnostic;
+  expanded?: boolean;
 }) {
   const [feedback, setFeedback] = useState("");
   return (
-    <details className="connection-details">
-      <summary>Detalhes da conexão</summary>
+    <details className="connection-details" open={expanded || undefined}>
+      <summary hidden={expanded}>Detalhes da conexão</summary>
       <p>
         {labels[diagnostic.stage]} ·{" "}
         {diagnostic.state === "ready"

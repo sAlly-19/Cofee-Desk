@@ -401,7 +401,7 @@ async function run() {
       "Incoming request shows caller and permission profiles",
       await js(
         peer,
-        '!!document.querySelector(".request-device .font-mono")&&document.querySelectorAll(".request-profiles button").length===2',
+        '!!document.querySelector(".access-request-device .font-mono")&&document.querySelectorAll(".request-profiles button").length===2',
       ),
     );
     await click(peer, "Apenas visualização");
@@ -421,6 +421,7 @@ async function run() {
       ),
     );
     await capture(peer, "incoming-session-request");
+    await capture(win, "outgoing-call");
     peer.setContentSize(1024, 680);
     await ready(peer);
     check(
@@ -517,6 +518,8 @@ async function run() {
       15000,
     );
     check("Real WebRTC video received", video);
+    await capture(win, "session-viewer");
+    await capture(peer, "session-host");
     check(
       "Host uses actual desktop capture",
       await js(
@@ -554,9 +557,29 @@ async function run() {
         '(()=>{const c=window.__testChannels.find(c=>c.label==="coffee-desk-pointer");return c.ordered===false&&c.maxRetransmits===0;})()',
       ),
     );
-    check('Native mouse defaults to independent backend',await js(peer,'window.electronAPI.getInputControlStatus().then(s=>s.mouseMode==="virtual"&&s.virtualMouseSupported)'));
-    check('Viewer cannot change host native mouse mode',await js(win,'window.electronAPI.setMouseMode("shared").then(()=>false,()=>true)'));
-    await js(peer,'window.electronAPI.setMouseMode("shared")');check('Host may explicitly select shared cursor',await js(peer,'window.electronAPI.getInputControlStatus().then(s=>s.mouseMode==="shared")'));await js(peer,'window.electronAPI.setMouseMode("virtual")');
+    check(
+      "Native mouse defaults to independent backend",
+      await js(
+        peer,
+        'window.electronAPI.getInputControlStatus().then(s=>s.mouseMode==="virtual"&&s.virtualMouseSupported)',
+      ),
+    );
+    check(
+      "Viewer cannot change host native mouse mode",
+      await js(
+        win,
+        'window.electronAPI.setMouseMode("shared").then(()=>false,()=>true)',
+      ),
+    );
+    await js(peer, 'window.electronAPI.setMouseMode("shared")');
+    check(
+      "Host may explicitly select shared cursor",
+      await js(
+        peer,
+        'window.electronAPI.getInputControlStatus().then(s=>s.mouseMode==="shared")',
+      ),
+    );
+    await js(peer, 'window.electronAPI.setMouseMode("virtual")');
     await js(peer, "window.electronAPI.toggleInputControl(false)");
     // Animation-frame batching is exercised by the dedicated hook harness; these windows stay hidden.
     const beforePointer = remoteMouse.length;
@@ -587,35 +610,91 @@ async function run() {
     await js(peer, "window.electronAPI.toggleInputControl(true)");
     check(
       "Host does not render a live preview",
-      await js(peer, '!document.querySelector(".host-stream video")'),
+      await js(peer, '!document.querySelector(".host-session-panel video")'),
+    );
+    const screens = await js(
+      peer,
+      'window.electronAPI.getDesktopSources().then(s=>s.filter(x=>x.id.startsWith("screen:")))',
+    );
+    await wait(300);
+    check(
+      "Monitor selector appears only with multiple displays",
+      (await js(win, '!!document.querySelector(".toolbar-monitor")')) ===
+        screens.length >= 2,
     );
     check(
-      "Viewer receives monitor selector",
-      await until(
+      "Monitor selector belongs to toolbar",
+      await js(
         win,
-        'document.querySelectorAll(".session-monitor-picker option").length>1',
+        '!document.querySelector(".toolbar-monitor")||!!document.querySelector(".session-toolbar .toolbar-monitor")',
       ),
     );
-    await js(win, () => {
-      const select = document.querySelector(".session-monitor-picker select");
-      select.value = [...select.options].find((o) =>
-        o.value.startsWith("screen:"),
-      ).value;
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    if (screens.length === 1) {
+      await js(
+        win,
+        'window.__testChannels.find(c=>c.label==="coffee-desk-files").send(JSON.stringify({type:"monitor-switch",id:' +
+          JSON.stringify(screens[0].id) +
+          "}))",
+      );
+      await wait(700);
+    }
+    if (screens.length >= 2) {
+      const current = await js(
+        peer,
+        "window.electronAPI.getCaptureSelection()",
+      );
+      const alternate = screens.find((s) => s.id !== current?.sourceId);
+      await js(
+        win,
+        '(()=>{const s=document.querySelector(".toolbar-monitor select");s.value=' +
+          JSON.stringify(alternate.id) +
+          ';s.dispatchEvent(new Event("change",{bubbles:true}));})()',
+      );
+      check(
+        "Second enumerated monitor applies without reconnect",
+        await until(
+          peer,
+          "window.electronAPI.getCaptureSelection().then(s=>s?.sourceId===" +
+            JSON.stringify(alternate.id) +
+            "&&s.active)",
+        ),
+      );
+      check(
+        "Remote selection follows confirmed enumerated monitor",
+        await until(
+          win,
+          'document.querySelector(".toolbar-monitor select")?.value===' +
+            JSON.stringify(alternate.id),
+        ),
+      );
+    }
     check(
-      "Monitor switch does not ask host for consent",
+      "Monitor replacement completes without host interaction",
       await js(
         peer,
-        '!document.body.textContent.includes("Trocar monitor compartilhado?")',
+        "window.electronAPI.getCaptureSelection().then(s=>s?.active===true)",
       ),
     );
+    await js(win, () =>
+      document
+        .querySelector('button[aria-label="Detalhes da conexão"]')
+        .click(),
+    );
     check(
-      "Monitor switch completes without host interaction",
+      "Connection details opens in toolbar",
       await until(
         win,
-        '!document.querySelector(".session-monitor-picker select").disabled',
+        '!!document.querySelector(".session-toolbar .session-details-panel")',
       ),
+    );
+    await capture(win, "session-connection-details");
+    await js(
+      win,
+      'document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}))',
+    );
+    check(
+      "Escape closes connection details",
+      await until(win, '!document.querySelector(".session-details-panel")'),
     );
     const fixtureName = "coffee-desk-check-" + Date.now() + ".txt";
     await js(win, "window.transferFixtureName=" + JSON.stringify(fixtureName));
@@ -677,6 +756,10 @@ async function run() {
       "Clipboard drawer opens during session",
       await until(win, '!!document.querySelector(".session-drawer")'),
     );
+    await capture(win, "session-clipboard");
+    await click(win, "Arquivos");
+    await capture(win, "session-files");
+    await click(win, "Clipboard");
     await js(win, () =>
       document.querySelector('.clipboard-panel input[type="checkbox"]').click(),
     );
@@ -717,6 +800,7 @@ async function run() {
       ),
     );
     await click(peer, "Tela e permissões");
+    await capture(peer, "session-source-permissions");
     check(
       "Host permissions editor opens",
       await until(
@@ -898,21 +982,53 @@ async function run() {
         ),
     );
     surface.showInactive();
-    const windowSource = surface.getMediaSourceId();
+    surface.setTitle("Coffee Desk capture fixture");
+    await until(
+      peer,
+      'window.electronAPI.getDesktopSources().then(s=>s.some(x=>x.name.includes("Coffee Desk capture fixture")))',
+      5000,
+    );
+    const windowSource = await js(
+      peer,
+      'window.electronAPI.getDesktopSources().then(s=>s.find(x=>x.name.includes("Coffee Desk capture fixture"))?.id)',
+    );
+    if (!windowSource) throw Error("Capture fixture window was not enumerated");
     await click(peer, "Tela e permissões");
     await until(
       peer,
-      '[...document.querySelectorAll(".source-picker option")].some(o=>o.value===' +
+      '!!document.querySelector(".source-categories button:not(:disabled)")',
+    );
+    await click(peer, "Aplicativo específico");
+    await until(
+      peer,
+      '[...document.querySelectorAll(".source-card")].some(b=>b.dataset.sourceId===' +
         JSON.stringify(windowSource) +
         ")",
     );
+    await capture(peer, "source-picker-before-window-choice");
+    if (
+      !(await js(
+        peer,
+        '[...document.querySelectorAll(".source-card")].some(b=>b.dataset.sourceId===' +
+          JSON.stringify(windowSource) +
+          ")",
+      ))
+    )
+      throw Error(
+        "Window selection unavailable: " +
+          (await js(
+            peer,
+            'JSON.stringify({categories:[...document.querySelectorAll(".source-categories button")].map(b=>({text:b.textContent,pressed:b.getAttribute("aria-pressed"),disabled:b.disabled})),ids:[...document.querySelectorAll(".source-card")].map(b=>b.dataset.sourceId)})',
+          )),
+      );
     await js(
       peer,
-      '(()=>{const select=document.querySelector(".source-picker select");select.value=' +
+      '[...document.querySelectorAll(".source-card")].find(b=>b.dataset.sourceId===' +
         JSON.stringify(windowSource) +
-        ';select.dispatchEvent(new Event("change",{bubbles:true}));})()',
+        ").click()",
     );
-    await click(peer, "Compartilhar fonte selecionada");
+    await capture(peer, "source-picker-application");
+    await click(peer, "Atualizar compartilhamento");
     check(
       "Actual window can replace monitor capture",
       await until(
@@ -920,6 +1036,7 @@ async function run() {
         'window.electronAPI.getCaptureSelection().then(s=>s?.kind==="window"&&s.active&&!document.querySelector(".modal-panel"))',
       ),
     );
+    await capture(peer, "source-after-window-update");
     check(
       "Window source never authorizes native control",
       await js(
@@ -944,18 +1061,18 @@ async function run() {
       ),
     );
     await click(peer, "Tela e permissões");
+    await until(peer, '!!document.querySelector(".source-categories")');
+    await click(peer, "Monitores");
     await until(
       peer,
-      '[...document.querySelectorAll(".source-picker option")].some(o=>o.value.startsWith("screen:"))',
+      '[...document.querySelectorAll(".source-card")].some(b=>b.dataset.sourceId.startsWith("screen:"))',
     );
-    await js(peer, () => {
-      const select = document.querySelector(".source-picker select");
-      select.value = [...select.options].find((o) =>
-        o.value.startsWith("screen:"),
-      ).value;
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    await click(peer, "Compartilhar fonte selecionada");
+    await js(peer, () =>
+      [...document.querySelectorAll(".source-card")]
+        .find((b) => b.dataset.sourceId.startsWith("screen:"))
+        .click(),
+    );
+    await click(peer, "Atualizar compartilhamento");
     check(
       "Monitor capture resumes after source replacement",
       await until(
@@ -1014,6 +1131,7 @@ async function run() {
     await js(win, 'document.querySelector(".options-button").click()');
     await click(win, "Renomear Máquina");
     await until(win, '!!document.querySelector("[role=alertdialog] input")');
+    await capture(win, "device-rename");
     await fill(win, "[role=alertdialog] input", "Computador de teste");
     await click(win, "Salvar");
     check(
@@ -1077,6 +1195,7 @@ async function run() {
     );
     await click(win, "Conectar com Senha");
     await until(win, '!!document.querySelector("[role=alertdialog] input")');
+    await capture(win, "device-password");
     await fill(win, "[role=alertdialog] input", "coffee-desk-local-test");
     await js(win, () =>
       [...document.querySelectorAll('[role="alertdialog"] button')]
@@ -1102,6 +1221,7 @@ async function run() {
       ),
     );
     await click(win, "Desconectar");
+    await capture(win, "confirm-disconnect");
     await click(win, "Encerrar Sessão");
     check(
       "End session returns caller home",
@@ -1134,6 +1254,7 @@ async function run() {
       ),
     );
     await click(win, "Ver histórico");
+    await capture(win, "history-complete");
     check(
       "Full history opens",
       await until(
@@ -1142,7 +1263,9 @@ async function run() {
       ),
     );
     await click(win, "Limpar Todo o Histórico");
+    await capture(win, "confirm-clear-history");
     await click(win, "Limpar Tudo");
+    await capture(win, "history-empty");
     check(
       "Clear history shows empty state",
       await until(win, '!!document.querySelector(".recent-empty")'),
@@ -1212,6 +1335,7 @@ async function run() {
     await click(win, "Configurações");
     await click(win, "Redefinir Preferências");
     await until(win, '!!document.querySelector("[role=alertdialog]")');
+    await capture(win, "confirm-reset-preferences");
     await js(win, () =>
       [...document.querySelectorAll('[role="alertdialog"] button')]
         .find((b) => b.textContent.trim() === "Redefinir preferências")

@@ -181,15 +181,12 @@ export function useWebRTCPeer({
     wireControl,
   ]);
   const bindStream = useCallback(
-    (stream: MediaStream) => {
+    async (stream: MediaStream) => {
       localStreamRef.current = stream;
-      if (role === "host")
-        void window.electronAPI
-          .confirmCaptureReady()
-          .then(() =>
-            window.electronAPI.toggleInputControl(policy.current.control),
-          )
-          .catch(() => {});
+      if (role === "host") {
+        await window.electronAPI.confirmCaptureReady();
+        await window.electronAPI.toggleInputControl(policy.current.control);
+      }
       if (dataChannelRef.current?.readyState === "open")
         dataChannelRef.current.send(
           JSON.stringify({ type: "capture-status", active: true }),
@@ -234,7 +231,7 @@ export function useWebRTCPeer({
       }
       if (!stream.getVideoTracks().length) throw Error("No video");
       const pc = create();
-      bindStream(stream);
+      await bindStream(stream);
       stream.getTracks().forEach((t) => pc.addTrack(t, stream));
       wireControl(
         pc.createDataChannel("coffee-desk-control", { ordered: true }),
@@ -275,26 +272,36 @@ export function useWebRTCPeer({
     onFilesChannelReady,
     onSendSignalingMessage,
   ]);
-  useEffect(
-    () =>
-      window.electronAPI.onCaptureUnavailable(() => {
-        if (role !== "host") return;
-        localStreamRef.current?.getTracks().forEach((t) => t.stop());
-        setIsSharing(false);
-        setPeerState("capture-ended");
-        setError(
-          "A fonte compartilhada não está mais disponível. Escolha outra tela ou janela.",
+  useEffect(() => {
+    const pause = () => {
+      if (role !== "host") return;
+      localStreamRef.current?.getTracks().forEach((t) => t.stop());
+      setIsSharing(false);
+      setPeerState("capture-ended");
+      setError(
+        "A fonte compartilhada não está mais disponível. Escolha outra tela ou janela.",
+      );
+      if (dataChannelRef.current?.readyState === "open")
+        dataChannelRef.current.send(
+          JSON.stringify({ type: "capture-status", active: false }),
         );
-        if (dataChannelRef.current?.readyState === "open")
-          dataChannelRef.current.send(
-            JSON.stringify({ type: "capture-status", active: false }),
-          );
-      }),
-    [role],
-  );
+    };
+    const unsubscribe = window.electronAPI.onCaptureUnavailable(pause);
+    window.addEventListener("capture-pause-request", pause);
+    return () => {
+      unsubscribe();
+      window.removeEventListener("capture-pause-request", pause);
+    };
+  }, [role]);
   const switchToRealScreen = useCallback(async () => {
     if (!pcRef.current) {
       await startSharing();
+      if (
+        !localStreamRef.current
+          ?.getVideoTracks()
+          .some((t) => t.readyState === "live")
+      )
+        throw new Error("Captura indisponível");
       return;
     }
     const epoch = ++generation.current,
@@ -325,7 +332,7 @@ export function useWebRTCPeer({
       }
       await sender.replaceTrack(track);
       const old = localStreamRef.current;
-      bindStream(stream);
+      await bindStream(stream);
       old?.getTracks().forEach((t) => t.stop());
       setError(null);
     } catch {
@@ -339,6 +346,7 @@ export function useWebRTCPeer({
       setError(
         "Não foi possível trocar a captura. Escolha uma fonte disponível e tente novamente.",
       );
+      throw new Error("Falha ao substituir a fonte de captura");
     }
   }, [bindStream, startSharing]);
   const drain = async (pc: RTCPeerConnection) => {
@@ -374,18 +382,28 @@ export function useWebRTCPeer({
         if (ice.current.length < 256) ice.current.push(value);
       } else void pc.addIceCandidate(value).catch(() => {});
     };
-    const sourceChanged = () => {
-      if (role === "host") void switchToRealScreen();
+    const sourceChanged = (event: Event) => {
+      if (role !== "host") return;
+      const request = (
+        event as CustomEvent<{ resolve: () => void; reject: () => void }>
+      ).detail;
+      void switchToRealScreen().then(
+        () => request?.resolve(),
+        () => request?.reject(),
+      );
     };
     window.addEventListener("webrtc-offer", offer);
     window.addEventListener("webrtc-answer", answer);
     window.addEventListener("webrtc-ice", candidate);
-    window.addEventListener("capture-source-changed", sourceChanged);
+    window.addEventListener("capture-source-change-request", sourceChanged);
     return () => {
       window.removeEventListener("webrtc-offer", offer);
       window.removeEventListener("webrtc-answer", answer);
       window.removeEventListener("webrtc-ice", candidate);
-      window.removeEventListener("capture-source-changed", sourceChanged);
+      window.removeEventListener(
+        "capture-source-change-request",
+        sourceChanged,
+      );
     };
   }, [role, create, onSendSignalingMessage, switchToRealScreen]);
   useEffect(() => {

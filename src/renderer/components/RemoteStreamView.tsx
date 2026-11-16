@@ -1,6 +1,7 @@
 import type { SessionPermissions } from "../../shared/session";
-import { ConnectionDetails } from "./session/ConnectionDetails";
-import { useState, useRef } from "react";
+import type { MonitorInfo } from "../hooks/useRemoteMonitors";
+import type { SharedSourceInfo } from "./session/HostStreamView";
+import { useEffect, useState, useRef } from "react";
 import type {
   MouseEventData,
   KeyboardEventData,
@@ -14,6 +15,13 @@ import { HostStreamView } from "./session/HostStreamView";
 import { ClientStreamView } from "./session/ClientStreamView";
 
 interface Props {
+  monitors?: {
+    monitors: MonitorInfo[];
+    pending: boolean;
+    request: (id: string) => void;
+  };
+  sourceInfo?: SharedSourceInfo | null;
+  onOpenAccess?: () => void;
   connectionId: string;
   permissions: SessionPermissions;
   remoteId: string;
@@ -38,6 +46,9 @@ interface Props {
 
 export function RemoteStreamView({
   remoteId,
+  monitors,
+  sourceInfo,
+  onOpenAccess,
   permissions,
   isConnected,
   role = "client",
@@ -82,6 +93,7 @@ export function RemoteStreamView({
 
   // Hook de captura de mouse e teclado
   const {
+    releaseInput,
     isKeyboardFocused,
     setIsKeyboardFocused,
     hostControlEnabled,
@@ -102,14 +114,18 @@ export function RemoteStreamView({
     containerRef,
   });
 
+  useEffect(() => {
+    const sync = () =>
+      setIsFullscreen(document.fullscreenElement === containerRef.current);
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, []);
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
     if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen?.();
-      setIsFullscreen(true);
+      void containerRef.current.requestFullscreen?.().catch(() => {});
     } else {
-      document.exitFullscreen?.();
-      setIsFullscreen(false);
+      void document.exitFullscreen?.().catch(() => {});
     }
   };
 
@@ -117,10 +133,17 @@ export function RemoteStreamView({
     <div
       ref={containerRef}
       tabIndex={0}
-      onFocus={() => setIsKeyboardFocused(true)}
-      onBlur={() => setIsKeyboardFocused(false)}
-      onKeyDown={handleKeyDown}
-      onKeyUp={handleKeyUp}
+      onFocus={(e) => setIsKeyboardFocused(e.target === e.currentTarget)}
+      onBlur={() => {
+        setIsKeyboardFocused(false);
+        releaseInput();
+      }}
+      onKeyDown={(e) => {
+        if (e.target === e.currentTarget) handleKeyDown(e);
+      }}
+      onKeyUp={(e) => {
+        if (e.target === e.currentTarget) handleKeyUp(e);
+      }}
       onDragEnter={(e) => {
         if (e.dataTransfer.types.includes("Files")) {
           e.preventDefault();
@@ -165,8 +188,25 @@ export function RemoteStreamView({
         border: isFullscreen ? "none" : "1px solid rgba(255, 140, 26, 0.2)",
       }}
     >
-      {/* 1. BARRA DE FERRAMENTAS FLUTUANTE */}
+      {/* Barra fora da área de vídeo: controles não encobrem a captura. */}
       <RemoteToolbar
+        monitors={monitors}
+        diagnostic={{
+          stage: peerState.startsWith("capture-") ? "capture" : "webrtc",
+          code:
+            peerState === "capture-failed"
+              ? "CAPTURE_FAILED"
+              : peerState === "connected"
+                ? "MEDIA_CONNECTED"
+                : peerState === "failed"
+                  ? "ICE_FAILED"
+                  : "MEDIA_CONNECTING",
+          state:
+            peerState === "connected" ? "ready" : error ? "failed" : "waiting",
+          stats,
+        }}
+        onOpenAccess={onOpenAccess}
+        onFocusVideo={() => containerRef.current?.focus()}
         remoteId={remoteId}
         role={role}
         peerState={peerState}
@@ -183,28 +223,6 @@ export function RemoteStreamView({
         onDisconnect={onDisconnect}
       />
 
-      <div className="session-diagnostic">
-        <ConnectionDetails
-          diagnostic={{
-            stage: peerState.startsWith("capture-") ? "capture" : "webrtc",
-            code:
-              peerState === "capture-failed"
-                ? "CAPTURE_FAILED"
-                : peerState === "connected"
-                  ? "MEDIA_CONNECTED"
-                  : peerState === "failed"
-                    ? "ICE_FAILED"
-                    : "MEDIA_CONNECTING",
-            state:
-              peerState === "connected"
-                ? "ready"
-                : error
-                  ? "failed"
-                  : "waiting",
-            stats,
-          }}
-        />
-      </div>
       {/* 2. ERRO SOBREPOSTO */}
       {error && (
         <div
@@ -233,6 +251,9 @@ export function RemoteStreamView({
 
       {/* 3. ÁREA CENTRAL DE VÍDEO (CLIENT OU HOST) */}
       <div
+        className={
+          role === "host" ? "session-surface-host" : "session-surface-client"
+        }
         style={{
           flex: 1,
           display: "flex",
@@ -240,7 +261,8 @@ export function RemoteStreamView({
           justifyContent: "center",
           position: "relative",
           width: "100%",
-          height: "100%",
+          minHeight: 0,
+          overflow: "auto",
         }}
       >
         {role === "client" ? (
@@ -259,6 +281,13 @@ export function RemoteStreamView({
           />
         ) : (
           <HostStreamView
+            permissions={permissions}
+            peerState={peerState}
+            hostControlEnabled={hostControlEnabled && permissions.control}
+            source={sourceInfo || null}
+            onOpenAccess={() => onOpenAccess?.()}
+            onToggleControl={() => void toggleHostControl()}
+            onDisconnect={onDisconnect}
             remoteId={remoteId}
             isSharing={isSharing}
             localVideoRef={localVideoRef}

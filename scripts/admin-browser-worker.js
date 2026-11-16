@@ -197,7 +197,9 @@ async function run() {
     await until(admin, 'document.querySelectorAll("tbody tr").length===1'),
   );
   await click(admin, "Detalhes");
+  await capture(admin, "device-details");
   await click(admin, "Bloquear temporariamente");
+  await capture(admin, "block-device");
   await fill(admin, "textarea", "Bloqueio aplicado pelo teste do painel.");
   await click(admin, "Confirmar decisão");
   check(
@@ -205,6 +207,7 @@ async function run() {
     await until(admin, '!!document.querySelector(".detail-id .blocked")'),
   );
   await click(admin, "Desbloquear / reverter");
+  await capture(admin, "unblock-device");
   await fill(admin, "textarea", "Reversão autorizada pelo teste do painel.");
   await click(admin, "Confirmar decisão");
   check(
@@ -219,6 +222,7 @@ async function run() {
     "Report from app appears in panel",
     await until(admin, 'document.querySelectorAll("tbody tr").length===1'),
   );
+  await capture(admin, "reports");
   await click(admin, "Analisar");
   await capture(admin, "review-report");
   await js(admin, () => {

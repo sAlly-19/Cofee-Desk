@@ -75,6 +75,7 @@ export interface ClipboardData {
 }
 
 export interface DesktopSource {
+  appIcon?: string;
   isPrimary?: boolean;
   id: string;
   name: string;

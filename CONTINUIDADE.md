@@ -175,3 +175,7 @@ A fronteira nativa confia no renderer oficial, com origem/argumentos validados. 
 - Capturar mouse no visualizador é uma função complementar (Esc libera), não a implementação da independência.
 - Testes próprios: `test:virtual-mouse` (Chromium real, sem mover cursor para o alvo) e `test:pointer-capture` (hook com Pointer Lock simulado). Ver docs/REMOTE-UX-IMPROVEMENTS.md.
 - Requer novo build em ambos os computadores para validar ponta a ponta. Sem instalador, publicação ou deploy nesta etapa.
+
+## Sessões — refatoração de UI em 16/11/2026
+
+Implementados toolbar contextual, detalhes em popover, seletor compartilhado por cartões, solicitação compacta e painel anfitrião sem vídeo local. Troca de fonte aguarda captura real e usa trava compartilhada. Consulte docs/SESSION-UI-REFACTOR.md e os relatórios em artifacts/redesign/ e artifacts/session-refactor/. Sem instalador, publicação ou deploy.

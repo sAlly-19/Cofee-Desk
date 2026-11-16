@@ -1,9 +1,21 @@
 import type { SessionPermissions } from "../../../shared/session";
-const labels = {
-  control: "Controlar mouse e teclado",
-  clipboard: "Compartilhar clipboard",
-  files: "Transferir arquivos",
-};
+const options = [
+  {
+    key: "control",
+    name: "Controlar mouse e teclado",
+    description: "Interagir com o monitor compartilhado.",
+  },
+  {
+    key: "clipboard",
+    name: "Compartilhar clipboard",
+    description: "Trocar conteúdo da área de transferência.",
+  },
+  {
+    key: "files",
+    name: "Transferir arquivos",
+    description: "Enviar e receber arquivos nesta sessão.",
+  },
+] as const;
 export function PermissionsFields({
   value,
   onChange,
@@ -18,7 +30,7 @@ export function PermissionsFields({
   return (
     <fieldset className="permission-fields" disabled={disabled}>
       <legend>Recursos permitidos</legend>
-      {(Object.keys(labels) as (keyof SessionPermissions)[]).map((key) => (
+      {options.map(({ key, name, description }) => (
         <label key={key}>
           <input
             type="checkbox"
@@ -26,15 +38,16 @@ export function PermissionsFields({
             disabled={key === "control" && windowOnly}
             onChange={(e) => onChange({ ...value, [key]: e.target.checked })}
           />
-          {labels[key]}
+          <span>
+            <strong>{name}</strong>
+            <small>
+              {key === "control" && windowOnly
+                ? "Janelas isoladas permitem somente visualização."
+                : description}
+            </small>
+          </span>
         </label>
       ))}
-      {windowOnly && (
-        <small>
-          O controle de mouse e teclado fica desativado ao compartilhar uma
-          janela.
-        </small>
-      )}
     </fieldset>
   );
 }

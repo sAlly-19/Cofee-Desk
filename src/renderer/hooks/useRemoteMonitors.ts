@@ -1,7 +1,7 @@
 import type { DesktopSource } from "../../shared/types";
 import { useEffect, useRef, useState } from "react";
 import { useModal } from "../context/ModalContext";
-interface Monitor {
+export interface MonitorInfo {
   id: string;
   name: string;
   selected: boolean;
@@ -11,7 +11,7 @@ export function useRemoteMonitors(
   role: "host" | "client",
   switchSource: (id: string) => Promise<void>,
 ) {
-  const [monitors, setMonitors] = useState<Monitor[]>([]),
+  const [monitors, setMonitors] = useState<MonitorInfo[]>([]),
     [pending, setPending] = useState(false);
   const switchRef = useRef(switchSource);
   switchRef.current = switchSource;
@@ -27,7 +27,12 @@ export function useRemoteMonitors(
         channel.send(JSON.stringify(m));
     };
     const list = async (force = false) => {
-      if (listing || (!force && Date.now() - lastList < 1000)) return;
+      if (
+        listing ||
+        (busy && !force) ||
+        (!force && Date.now() - lastList < 1000)
+      )
+        return;
       listing = true;
       lastList = Date.now();
       try {
@@ -42,9 +47,15 @@ export function useRemoteMonitors(
               .slice(0, 16)
               .map((s, i) => ({
                 id: s.id,
-                name:
-                  "Monitor " + (i + 1) + (s.isPrimary ? " (principal)" : ""),
-                selected: s.id === selected?.sourceId,
+                name: (
+                  "Monitor " +
+                  (i + 1) +
+                  (s.isPrimary ? " (principal)" : "") +
+                  (s.name && !/^screen|^entire screen/i.test(s.name)
+                    ? " · " + s.name
+                    : "")
+                ).slice(0, 80),
+                selected: s.id === selected?.sourceId && selected.active,
               })),
           });
       } finally {
@@ -67,7 +78,7 @@ export function useRemoteMonitors(
         ) {
           setMonitors(
             m.monitors.filter(
-              (s: Monitor) =>
+              (s: MonitorInfo) =>
                 typeof s.id === "string" &&
                 s.id.startsWith("screen:") &&
                 s.id.length <= 150 &&
@@ -120,6 +131,8 @@ export function useRemoteMonitors(
               await list(true);
             }
             send({ type: "monitor-result", accepted });
+          } catch {
+            send({ type: "monitor-result", accepted: false });
           } finally {
             busy = false;
           }
@@ -143,7 +156,12 @@ export function useRemoteMonitors(
     channel.addEventListener("message", receive);
     channel.addEventListener("open", open);
     open();
+    const inventoryTimer = setInterval(() => {
+      if (role === "host") void list().catch(() => {});
+      else send({ type: "monitor-list-request" });
+    }, 5000);
     return () => {
+      clearInterval(inventoryTimer);
       active = false;
       window.removeEventListener("capture-source-changed", sourceChanged);
       channel.removeEventListener("message", receive);

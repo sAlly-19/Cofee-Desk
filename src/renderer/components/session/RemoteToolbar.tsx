@@ -1,4 +1,8 @@
-import type { SessionPermissions } from "../../../shared/session";
+import { useEffect, useRef, useState } from "react";
+import type {
+  ConnectionDiagnostic,
+  SessionPermissions,
+} from "../../../shared/session";
 import {
   Maximize2,
   Minimize2,
@@ -6,11 +10,16 @@ import {
   Keyboard,
   ClipboardList,
   FolderSync,
+  Monitor,
+  Flag,
+  MoreHorizontal,
+  Settings2,
+  MousePointer2,
 } from "lucide-react";
 import type { FileTransferItem } from "@shared/types";
-import { formatSpeed } from "../../hooks/useFileTransfer";
-
-interface RemoteToolbarProps {
+import { SessionDetails } from "./SessionDetails";
+import type { MonitorInfo } from "../../hooks/useRemoteMonitors";
+interface Props {
   remoteId: string;
   permissions: SessionPermissions;
   role: "host" | "client";
@@ -20,325 +29,226 @@ interface RemoteToolbarProps {
   hostControlEnabled: boolean;
   activeDrawer?: "clipboard" | "files" | null;
   activeTransfer?: FileTransferItem;
+  monitors?: {
+    monitors: MonitorInfo[];
+    pending: boolean;
+    request: (id: string) => void;
+  };
+  diagnostic: ConnectionDiagnostic;
+  onFocusVideo: () => void;
+  onOpenAccess?: () => void;
   onToggleFullscreen: () => void;
   onToggleHostControl: () => void;
   onToggleDrawer?: (tab: "clipboard" | "files") => void;
   onReport?: () => void;
   onDisconnect?: () => void;
 }
-
-export function RemoteToolbar({
-  remoteId,
-  permissions,
-  role,
-  peerState,
-  isKeyboardFocused,
-  isFullscreen,
-  hostControlEnabled,
-  activeDrawer,
-  activeTransfer,
-  onToggleFullscreen,
-  onToggleHostControl,
-  onToggleDrawer,
-  onReport,
-  onDisconnect,
-}: RemoteToolbarProps): JSX.Element {
+export function RemoteToolbar(p: Props) {
+  const [more, setMore] = useState(false),
+    root = useRef<HTMLDivElement>(null),
+    moreButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!more) return;
+    const close = (e: PointerEvent) => {
+      if (!root.current?.contains(e.target as Node)) setMore(false);
+    };
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setMore(false);
+        moreButton.current?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", key, true);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", key, true);
+    };
+  }, [more]);
+  const status =
+    p.peerState === "connected"
+      ? "Conectado"
+      : p.peerState === "failed"
+        ? "Falha na conexão"
+        : p.peerState.startsWith("capture-")
+          ? "Captura interrompida"
+          : p.peerState === "disconnected"
+            ? "Conexão interrompida"
+            : "Conectando";
   return (
-    <div
-      className="session-toolbar"
-      style={{
-        position: "absolute",
-        top: 0,
-        left: 0,
-        right: 0,
-        height: 48,
-        backgroundColor: "rgba(12, 7, 4, 0.85)",
-        backdropFilter: "blur(10px)",
-        borderBottom: "1px solid rgba(255, 140, 26, 0.15)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "0 1rem",
-        zIndex: 20,
-      }}
-    >
-      {/* Lado Esquerdo: Identificação e Status da Sessão */}
-      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            padding: "3px 10px",
-            borderRadius: "20px",
-            backgroundColor: "var(--accent-subtle)",
-            border: "1px solid var(--border-warm)",
-            fontSize: "0.75rem",
-            color: "var(--text-primary)",
-          }}
-        >
-          <div
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: "50%",
-              backgroundColor:
-                peerState === "connected" ? "#22c55e" : "#f59e0b",
-              boxShadow:
-                peerState === "connected"
-                  ? "0 0 8px #22c55e"
-                  : "0 0 8px #f59e0b",
-            }}
-          />
-          <span>
-            {role === "host"
-              ? "Compartilhando sua tela"
-              : `Controlando: ${remoteId}`}{" "}
-            • {peerState}
-          </span>
+    <header className="session-toolbar" aria-label="Controles da sessão">
+      <div className="session-identity">
+        <span
+          className={
+            "session-status-dot " +
+            (p.peerState === "connected" ? "is-online" : "")
+          }
+          aria-hidden="true"
+        />
+        <div>
+          <strong>
+            {p.role === "host" ? "Sessão recebida" : "Acesso remoto"}
+          </strong>
+          <span className="font-mono">{p.remoteId}</span>
         </div>
+        <small role="status">{status}</small>
       </div>
-
-      {/* Lado Direito: Ações e Ferramentas */}
-      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-        {/* Toggle de permissão de controle remoto pelo Host */}
-        {role === "host" && (
+      {p.role === "client" && p.monitors && p.monitors.monitors.length >= 2 && (
+        <label className="toolbar-monitor">
+          <Monitor size={16} />
+          <span className="sr-only">Monitor remoto</span>
+          <select
+            aria-label="Monitor remoto"
+            disabled={p.monitors.pending}
+            value={p.monitors.monitors.find((m) => m.selected)?.id || ""}
+            onChange={(e) => p.monitors?.request(e.target.value)}
+          >
+            {!p.monitors.monitors.some((m) => m.selected) && (
+              <option value="">Selecione um monitor</option>
+            )}
+            {p.monitors.monitors.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+          {p.monitors.pending && <small role="status">Trocando…</small>}
+        </label>
+      )}
+      <div className="session-tools">
+        {p.role === "client" ? (
           <button
-            disabled={!permissions.control}
-            onClick={onToggleHostControl}
-            title={
-              hostControlEnabled
-                ? "Clique para pausar o controle remoto do visitante"
-                : "Clique para reativar o controle remoto"
+            type="button"
+            className="session-tool session-keyboard"
+            disabled={!p.permissions.control}
+            onClick={p.onFocusVideo}
+            title="Focar o vídeo para digitar na máquina remota"
+          >
+            <Keyboard size={16} />
+            <span>
+              {p.isKeyboardFocused ? "Teclado ativo" : "Clique p/ Digitar"}
+            </span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            className={
+              "session-tool " + (p.hostControlEnabled ? "is-active" : "")
             }
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              backgroundColor: hostControlEnabled
-                ? "rgba(34, 197, 94, 0.15)"
-                : "rgba(239, 68, 68, 0.15)",
-              border: `1px solid ${hostControlEnabled ? "#22c55e" : "#ef4444"}`,
-              color: hostControlEnabled ? "#22c55e" : "#ef4444",
-              borderRadius: "8px",
-              padding: "0.4rem 0.75rem",
-              fontSize: "0.78rem",
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
+            disabled={!p.permissions.control}
+            aria-pressed={p.hostControlEnabled}
+            onClick={p.onToggleHostControl}
+            title="Pausar ou retomar a entrada remota autorizada"
           >
+            <MousePointer2 size={16} />
             <span>
-              {hostControlEnabled ? "Controle: Ativo" : "Controle: Pausado"}
+              {p.hostControlEnabled ? "Controle: Ativo" : "Controle: Pausado"}
             </span>
           </button>
         )}
-
-        {/* Indicador de foco de teclado no Client */}
-        {role === "client" && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              padding: "0.4rem 0.75rem",
-              borderRadius: "8px",
-              backgroundColor: isKeyboardFocused
-                ? "rgba(34, 197, 94, 0.15)"
-                : "var(--accent-subtle)",
-              border: `1px solid ${
-                isKeyboardFocused ? "#22c55e" : "rgba(255, 140, 26, 0.3)"
-              }`,
-              fontSize: "0.78rem",
-              color: isKeyboardFocused ? "#22c55e" : "var(--accent-soft)",
-              fontWeight: 600,
-            }}
-          >
-            <Keyboard size={14} />
-            <span>
-              {isKeyboardFocused ? "Teclado Ativo" : "Clique p/ Digitar"}
-            </span>
-          </div>
-        )}
-
-        {/* Pill flutuante de progresso de arquivo ativo na barra */}
-        {activeTransfer && (
-          <button
-            onClick={() => onToggleDrawer?.("files")}
-            className="cd-btn-tactile"
-            title="Clique para ver o painel de transferência de arquivos"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              backgroundColor: "var(--accent-subtle)",
-              border: "1px solid var(--border-warm)",
-              color: "var(--text-primary)",
-              borderRadius: "8px",
-              padding: "0.4rem 0.75rem",
-              fontSize: "0.76rem",
-              fontWeight: 700,
-              cursor: "pointer",
-              boxShadow: "none",
-            }}
-          >
-            <FolderSync
-              size={13}
-              color="var(--accent-soft)"
-              className="cd-spin"
-            />
-            <span
-              style={{
-                maxWidth: 110,
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {activeTransfer.fileName}
-            </span>
-            <span style={{ color: "var(--accent-primary)", fontWeight: 800 }}>
-              {activeTransfer.progress}%
-            </span>
-            {activeTransfer.speedBytesPerSec !== undefined &&
-              activeTransfer.speedBytesPerSec > 0 && (
-                <span style={{ color: "#22c55e", fontSize: "0.7rem" }}>
-                  ({formatSpeed(activeTransfer.speedBytesPerSec)})
-                </span>
-              )}
-          </button>
-        )}
-
-        {/* Botões para Gavetas Flutuantes de Clipboard e Arquivos */}
-        {onToggleDrawer && (
+        {p.onToggleDrawer && (
           <>
             <button
-              disabled={!permissions.clipboard}
-              onClick={() => onToggleDrawer("clipboard")}
+              type="button"
+              className={
+                "session-tool " +
+                (p.activeDrawer === "clipboard" ? "is-active" : "")
+              }
               title="Área de Transferência Compartilhada"
-              className="cd-btn-tactile"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "5px",
-                backgroundColor:
-                  activeDrawer === "clipboard"
-                    ? "var(--accent-subtle)"
-                    : "rgba(255, 255, 255, 0.08)",
-                border: `1px solid ${
-                  activeDrawer === "clipboard"
-                    ? "var(--accent-primary)"
-                    : "rgba(255, 255, 255, 0.14)"
-                }`,
-                color: "var(--text-primary)",
-                borderRadius: "8px",
-                padding: "0.4rem 0.75rem",
-                fontSize: "0.78rem",
-                fontWeight: 600,
-                cursor: "pointer",
-                transition: "all 0.2s ease",
-              }}
+              disabled={!p.permissions.clipboard}
+              onClick={() => p.onToggleDrawer?.("clipboard")}
             >
-              <ClipboardList
-                size={14}
-                color={
-                  activeDrawer === "clipboard"
-                    ? "var(--accent-soft)"
-                    : "var(--text-primary)"
-                }
-              />
+              <ClipboardList size={16} />
               <span>Clipboard</span>
             </button>
-
             <button
-              disabled={!permissions.files}
-              onClick={() => onToggleDrawer("files")}
+              type="button"
+              className={
+                "session-tool " +
+                (p.activeDrawer === "files" ? "is-active" : "")
+              }
               title="Transferência de Arquivos"
-              className="cd-btn-tactile"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "5px",
-                backgroundColor:
-                  activeDrawer === "files"
-                    ? "var(--accent-subtle)"
-                    : "rgba(255, 255, 255, 0.08)",
-                border: `1px solid ${
-                  activeDrawer === "files"
-                    ? "var(--accent-primary)"
-                    : "rgba(255, 255, 255, 0.14)"
-                }`,
-                color: "var(--text-primary)",
-                borderRadius: "8px",
-                padding: "0.4rem 0.75rem",
-                fontSize: "0.78rem",
-                fontWeight: 600,
-                cursor: "pointer",
-                transition: "all 0.2s ease",
-              }}
+              disabled={!p.permissions.files}
+              onClick={() => p.onToggleDrawer?.("files")}
             >
-              <FolderSync
-                size={14}
-                color={
-                  activeDrawer === "files"
-                    ? "var(--accent-soft)"
-                    : "var(--text-primary)"
-                }
-              />
-              <span>Arquivos</span>
+              <FolderSync size={16} />
+              <span>
+                Arquivos
+                {p.activeTransfer
+                  ? " · " + Math.round(p.activeTransfer.progress) + "%"
+                  : ""}
+              </span>
             </button>
           </>
         )}
-
+        {p.role === "host" && (
+          <button
+            type="button"
+            className="session-tool"
+            onClick={p.onOpenAccess}
+            title="Tela e permissões"
+          >
+            <Settings2 size={17} />
+            <span>Tela e permissões</span>
+          </button>
+        )}
+        <SessionDetails remoteId={p.remoteId} diagnostic={p.diagnostic} />
+        <div className="session-secondary-actions" ref={root}>
+          <button
+            type="button"
+            ref={moreButton}
+            className="session-tool session-more"
+            aria-label="Mais ações da sessão"
+            title="Mais ações"
+            aria-expanded={more}
+            onClick={() => setMore(!more)}
+          >
+            <MoreHorizontal size={18} />
+          </button>
+          <div className={"session-secondary-list " + (more ? "is-open" : "")}>
+            <button
+              type="button"
+              className="session-tool"
+              title={p.isFullscreen ? "Sair da tela cheia" : "Tela cheia"}
+              onClick={() => {
+                setMore(false);
+                p.onToggleFullscreen();
+              }}
+            >
+              {p.isFullscreen ? (
+                <Minimize2 size={17} />
+              ) : (
+                <Maximize2 size={17} />
+              )}
+              <span className="secondary-action-label">Tela cheia</span>
+            </button>
+            {p.onReport && (
+              <button
+                type="button"
+                className="session-tool session-report"
+                title="Denunciar dispositivo"
+                onClick={() => {
+                  setMore(false);
+                  p.onReport?.();
+                }}
+              >
+                <Flag size={16} />
+                <span>Denunciar</span>
+              </button>
+            )}
+          </div>
+        </div>
         <button
-          onClick={onToggleFullscreen}
-          title={isFullscreen ? "Sair da tela cheia" : "Tela cheia"}
-          style={{
-            backgroundColor: "rgba(255, 255, 255, 0.08)",
-            border: "1px solid rgba(255, 255, 255, 0.15)",
-            color: "var(--text-primary)",
-            borderRadius: "8px",
-            padding: "0.4rem",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-          }}
+          type="button"
+          className="session-tool session-disconnect"
+          onClick={p.onDisconnect}
+          title="Desconectar"
         >
-          {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          <PhoneOff size={16} />
+          <span>Desconectar</span>
         </button>
-
-        {onReport && (
-          <button
-            className="secondary-button session-report"
-            onClick={onReport}
-          >
-            Denunciar
-          </button>
-        )}
-        {onDisconnect && (
-          <button
-            onClick={onDisconnect}
-            className="cd-btn-tactile"
-            style={{
-              backgroundColor: "#ef4444",
-              border: "none",
-              color: "var(--text-primary)",
-              borderRadius: "8px",
-              padding: "0.4rem 0.75rem",
-              fontWeight: 700,
-              fontSize: "0.78rem",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              backdropFilter: "blur(8px)",
-              boxShadow: "0 2px 10px rgba(239, 68, 68, 0.4)",
-            }}
-          >
-            <PhoneOff size={14} />
-            <span>Desconectar</span>
-          </button>
-        )}
       </div>
-    </div>
+    </header>
   );
 }
