@@ -16,7 +16,34 @@ O novo instalador fica em `release/Coffee-Desk-1.0.1-x64-Setup.exe`.
 
 Aplicativo de acesso remoto P2P para Windows, desenvolvido com Electron, React, TypeScript e WebRTC.
 
-![Coffee Desk 1.0.0](docs/images/coffee-desk-1.0.0.png)
+## Interface
+
+Imagens da interface real com **dados fictícios**, geradas em ambiente isolado. Não mostram a área de trabalho, aplicativos, arquivos ou informações pessoais de um computador real.
+
+**Conexão remota**
+
+![Tela inicial do Coffee Desk com ID fictício e histórico vazio](docs/images/readme-home.png)
+
+<details>
+<summary>Solicitação de acesso e permissões</summary>
+
+![Solicitação de acesso com ID fictício e monitor demonstrativo](docs/images/readme-incoming.png)
+
+</details>
+
+<details>
+<summary>Painel do anfitrião</summary>
+
+![Painel da sessão com fonte e computador demonstrativos, sem vídeo local](docs/images/readme-host.png)
+
+</details>
+
+<details>
+<summary>Clipboard compartilhado</summary>
+
+![Painel de clipboard com textos demonstrativos e controles de sincronização](docs/images/readme-clipboard.png)
+
+</details>
 
 ## Recursos
 

@@ -23,4 +23,9 @@ signaling-server/admin-dist/
 .env.client.local
 
 # Capturas locais podem conter dados sensíveis; não versionar.
-docs/images/
+docs/images/*
+# Somente imagens públicas geradas com dados fictícios.
+!docs/images/readme-home.png
+!docs/images/readme-incoming.png
+!docs/images/readme-host.png
+!docs/images/readme-clipboard.png
