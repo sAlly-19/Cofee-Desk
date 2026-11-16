@@ -26,6 +26,7 @@ jobs:
       - run: npm run build --prefix signaling-server
       - run: npm run build:admin
       - run: npm run build
+      - run: npm run test:database-helper
       - run: npm run test:security
       - run: npm run test:reliability
       - run: npm run test:file-clipboard
@@ -56,3 +57,14 @@ jobs:
             release/*source.zip
             release/SHA256SUMS.txt
           if-no-files-found: error
+
+      - name: Sanitized database startup diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: database-startup-diagnostics
+          path: |
+            artifacts/**/startup-error.log
+            !artifacts/helper-*/**/startup-error.log
+          if-no-files-found: ignore
+          retention-days: 3
