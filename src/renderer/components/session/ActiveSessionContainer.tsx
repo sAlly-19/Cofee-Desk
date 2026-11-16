@@ -49,6 +49,7 @@ export function ActiveSessionContainer({
   const [showAccess, setShowAccess] = useState(false),
     [source, setSource] = useState("");
   const [newKind, setNewKind] = useState<"screen" | "window">(sourceKind);
+  const [sourceValid, setSourceValid] = useState(false);
   const [sourceError, setSourceError] = useState("");
   const [sourceBusy, setSourceBusy] = useState(false),
     [permissionBusy, setPermissionBusy] = useState(false);
@@ -95,6 +96,7 @@ export function ActiveSessionContainer({
     useState<RTCDataChannel | null>(null);
 
   const openAccess = async () => {
+    setSourceValid(false);
     setSourceError("");
     try {
       const selected = await window.electronAPI.getCaptureSelection();
@@ -214,7 +216,7 @@ export function ActiveSessionContainer({
         footer={
           <button
             className="primary-button"
-            disabled={!source || sourceBusy || permissionBusy}
+            disabled={!source || !sourceValid || sourceBusy || permissionBusy}
             onClick={async () => {
               if (sourceBusy) return;
               setSourceBusy(true);
@@ -236,6 +238,7 @@ export function ActiveSessionContainer({
         }
       >
         <SourcePicker
+          onValidityChange={setSourceValid}
           value={source}
           disabled={sourceBusy || permissionBusy}
           onChange={(id, kind) => {

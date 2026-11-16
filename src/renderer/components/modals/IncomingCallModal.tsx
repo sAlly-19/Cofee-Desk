@@ -38,6 +38,7 @@ function Call({
     [viewOnly, setViewOnly] = useState(false);
   const clicked = useRef(false);
   if (!answering && error) clicked.current = false;
+  const [sourceValid, setSourceValid] = useState(false);
   const expired = countdown <= 0 && !answering,
     locked = answering || expired;
   return (
@@ -70,7 +71,7 @@ function Call({
           </button>
           <button
             className="primary-button"
-            disabled={!source || locked}
+            disabled={!source || !sourceValid || locked}
             onClick={() => {
               if (clicked.current) return;
               clicked.current = true;
@@ -152,6 +153,7 @@ function Call({
           disabled={locked || viewOnly}
         />
         <SourcePicker
+          onValidityChange={setSourceValid}
           value={source}
           disabled={locked}
           onChange={(id, k) => {

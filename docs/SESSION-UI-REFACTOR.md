@@ -42,7 +42,7 @@ Sem instalador, push, release ou deploy nesta etapa. Segredos e endereço do ser
 
 ## Resultado de validação
 
-A base iniciou com lint e TypeScript aprovados. Ao final: lint, TypeScript e build aprovados; 110/110 verificações de sessão/integração; 23/23 de componentes e topologia simulada; 6/6 de entrada; 43/43 de confiabilidade; 18/18 do atualizador; 9/9 do histórico. As suítes de segurança e painel administrativo passaram, assim como a inicialização real do processo principal. Não houve execução de instaladores.
+A base iniciou com lint e TypeScript aprovados. Ao final: lint, TypeScript e build aprovados; 111/111 verificações de sessão/integração; 23/23 de componentes e topologia simulada; 6/6 de entrada; 43/43 de confiabilidade; 18/18 do atualizador; 9/9 do histórico. As suítes de segurança e painel administrativo passaram, assim como a inicialização real do processo principal. Não houve execução de instaladores.
 
 A integração fez captura real de monitor, troca para o segundo monitor enumerado pelo Windows, seleção remota sincronizada, troca para uma janela Chromium real, fechamento da janela e retorno a monitor sem reconectar. Também exercitou vídeo WebRTC, teclado pelo canal, clipboard, arquivo real, revogação e tentativas de contornar as permissões via IPC/canais.
 
@@ -51,3 +51,5 @@ Falhas intermediárias encontradas e corrigidas: carregamento inicial sobrescrev
 O aviso existente do Vite sobre o formato da configuração continua presente. Mensagens de IPC negado são esperadas nos testes de autorização. A fixture de captura não registra a ação de restaurar a janela por chamada recebida; esse caminho é exercitado e aprovado pelo smoke test do processo principal.
 
 Imagens atualizadas em artifacts/capturas-coffee-desk-2026-11-16/index.html. As imagens de UI usam dados demonstrativos; as da integração usam duas instâncias locais e fontes reais. Sem validação em dois computadores de redes distintas nesta execução, desconexão física de monitor ou DPI misto.
+
+A rodada final também confirmou a expiração real no hook da chamada, com relógio do renderer avançado apenas no teste, e feedback visível após fechar o modal. Aceitar/atualizar ficam desabilitados enquanto a fonte ainda está sendo enumerada ou não é válida.

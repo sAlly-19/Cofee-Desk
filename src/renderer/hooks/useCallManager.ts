@@ -260,8 +260,14 @@ export function useCallManager({
       sendWsMessage({ type: "call-rejected", targetId: id });
       finish("rejected", reason === "Tempo esgotado." ? "EXPIRED" : "REJECTED");
       setConnectionStatus("idle");
+      if (reason === "Tempo esgotado.")
+        showToast({
+          type: "info",
+          message:
+            "Solicitação expirada. Peça ao outro computador para tentar novamente.",
+        });
     },
-    [finish, sendWsMessage],
+    [finish, sendWsMessage, showToast],
   );
   const handleDisconnect = useCallback(
     (notify = true) => {

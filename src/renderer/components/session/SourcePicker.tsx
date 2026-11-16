@@ -5,10 +5,12 @@ export function SourcePicker({
   value,
   onChange,
   disabled = false,
+  onValidityChange,
 }: {
   value: string;
   onChange: (id: string, kind: "screen" | "window") => void;
   disabled?: boolean;
+  onValidityChange?: (valid: boolean) => void;
 }) {
   const [sources, setSources] = useState<DesktopSource[]>([]),
     [category, setCategory] = useState<"screen" | "window">(
@@ -76,6 +78,9 @@ export function SourcePicker({
   useEffect(() => {
     if (value) setCategory(value.startsWith("window:") ? "window" : "screen");
   }, [value]);
+  useEffect(() => {
+    onValidityChange?.(!loading && sources.some((s) => s.id === value));
+  }, [loading, sources, value, onValidityChange]);
   const filtered = sources.filter((s) =>
     s.id.startsWith(category === "screen" ? "screen:" : "window:"),
   );

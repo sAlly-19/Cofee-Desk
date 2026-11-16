@@ -456,6 +456,26 @@ async function run() {
       peer,
       'document.body.textContent.includes("Aceitar e Compartilhar")',
     );
+    await js(
+      peer,
+      "window.originalNow=Date.now;Date.now=()=>window.originalNow()+31000;true",
+    );
+    check(
+      "Expired request informs host after dismissal",
+      await until(
+        peer,
+        'document.body.textContent.includes("Solicitação expirada")&&!document.body.textContent.includes("Aceitar e Compartilhar")',
+      ),
+    );
+    await js(peer, "Date.now=window.originalNow;delete window.originalNow");
+    await reload(win);
+    await until(win, '!!document.querySelector(".access-badge.is-ready")');
+    await fill(win, "#remote-id", peerId);
+    await js(win, 'document.querySelector(".connect-form").requestSubmit()');
+    await until(
+      peer,
+      'document.body.textContent.includes("Aceitar e Compartilhar")',
+    );
     await click(peer, "Recusar");
     check(
       "Refusal reaches caller",
