@@ -21,3 +21,6 @@ signaling-server/admin-dist/
 
 # Build-time client deployment address stays off the public repository.
 .env.client.local
+
+# Capturas locais podem conter dados sensíveis; não versionar.
+docs/images/

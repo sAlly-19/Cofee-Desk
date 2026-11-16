@@ -318,10 +318,11 @@ async function run() {
       )) && (await clipboard.readText()) === id,
     );
     await clipboard.writeText(originalClipboard);
-    await js(
-      win,
-      'window.originalWriteText=navigator.clipboard.writeText; navigator.clipboard.writeText=async()=>{throw new Error("test denied")}; document.querySelector(".copy-button").click()',
-    );
+    ipcMain.removeHandler("device:copy-id");
+    ipcMain.handle("device:copy-id", () => {
+      throw new Error("Simulated native clipboard refusal");
+    });
+    await js(win, 'document.querySelector(".copy-button").click()');
     check(
       "Clipboard failure has feedback",
       await until(
@@ -336,10 +337,8 @@ async function run() {
         '!document.querySelector(".copy-button").textContent.includes("Copiado!")',
       ),
     );
-    await js(
-      win,
-      "navigator.clipboard.writeText=window.originalWriteText; delete window.originalWriteText",
-    );
+    ipcMain.removeHandler("device:copy-id");
+    require("../dist-electron/main/deviceClipboard").registerDeviceClipboard();
     win.hide();
     await click(win, "Definir senha");
     check(

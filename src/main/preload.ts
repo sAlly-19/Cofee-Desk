@@ -211,6 +211,9 @@ const electronAPI = {
     ipcRenderer.invoke("file:showInFolder", filePath),
   openFile: (filePath: string) => ipcRenderer.invoke("file:openFile", filePath),
 
+  copyDeviceId: (id: string) =>
+    ipcRenderer.invoke("device:copy-id", id) as Promise<boolean>,
+
   // Clipboard
   setClipboard: (data: ClipboardData) =>
     ipcRenderer.send(IPC_CHANNELS.CLIPBOARD_SET, data),

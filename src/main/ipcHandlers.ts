@@ -1,3 +1,4 @@
+import { registerDeviceClipboard } from "./deviceClipboard";
 import { assertTrusted } from "./ipcSecurity";
 import { hasPermission } from "./sessionAuthority";
 import { ipcMain, app, shell } from "electron";
@@ -28,6 +29,7 @@ function getUniqueFilePath(dir: string, fileName: string): string {
  * Chamado após a inicialização do app.
  */
 export function registerIpcHandlers(): void {
+  registerDeviceClipboard();
   // Persistência de configurações
   ipcMain.on(IPC_CHANNELS.SET_MY_ID, (_event, id: string) => {
     store.set("coffeeDeskId.id", id);

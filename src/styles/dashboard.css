@@ -2568,3 +2568,149 @@ button:disabled {
 .host-session-panel {
   align-self: flex-start;
 }
+/* Clipboard: controles consistentes fora dos modais. */
+.clipboard-panel .clipboard-auto-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: #ffffff04;
+  cursor: pointer;
+}
+.clipboard-auto-toggle > span {
+  display: grid;
+  gap: 5px;
+}
+.clipboard-auto-toggle strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.clipboard-auto-toggle small {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.clipboard-panel .clipboard-auto-toggle input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  width: 38px;
+  min-width: 38px;
+  height: 22px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--border-warm);
+  border-radius: 12px;
+  background: #ffffff0b;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.clipboard-panel .clipboard-auto-toggle input::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  transition: transform 0.15s;
+}
+.clipboard-panel .clipboard-auto-toggle input:checked {
+  background: var(--accent-primary);
+  border-color: var(--accent-soft);
+}
+.clipboard-panel .clipboard-auto-toggle input:checked::after {
+  transform: translateX(16px);
+  background: var(--text-primary);
+}
+.clipboard-panel .clipboard-action {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 42px;
+  padding: 11px 13px;
+  border-radius: 8px;
+  font:
+    600 13px Inter,
+    sans-serif;
+  line-height: 1.4;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.clipboard-panel .clipboard-action-secondary {
+  border: 1px solid var(--border-warm);
+  background: #ffffff05;
+  color: var(--text-primary);
+  box-shadow: none;
+}
+.clipboard-panel .clipboard-action-secondary:hover:not(:disabled) {
+  background: #ffffff0d;
+  border-color: var(--accent-soft);
+}
+.clipboard-panel .clipboard-action-primary {
+  border: 1px solid var(--accent-primary);
+  background: var(--accent-primary);
+  color: var(--text-primary);
+  box-shadow: none;
+}
+.clipboard-panel .clipboard-action-primary:hover:not(:disabled) {
+  background: var(--accent-hover, var(--accent-primary));
+  border-color: var(--accent-soft);
+}
+.clipboard-panel .clipboard-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.clipboard-action:focus-visible,
+.clipboard-auto-toggle input:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 3px;
+}
+.clipboard-local-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.clipboard-panel .clipboard-text-field {
+  display: grid;
+  gap: 9px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 6px;
+}
+.clipboard-panel .clipboard-text-field textarea {
+  min-height: 104px;
+  line-height: 1.6;
+  padding: 12px;
+  border-radius: 8px;
+  resize: vertical;
+}
+.clipboard-sync-state {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+@media (max-width: 600px) {
+  .clipboard-local-actions {
+    grid-template-columns: 1fr;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .clipboard-panel .clipboard-action,
+  .clipboard-auto-toggle input,
+  .clipboard-auto-toggle input::after {
+    transition: none;
+  }
+}

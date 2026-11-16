@@ -173,7 +173,8 @@ export function SessionOptionsModal({
             const s = selectedSession;
             onClose();
             try {
-              await navigator.clipboard.writeText(s.remoteId);
+              if (!(await window.electronAPI.copyDeviceId(s.remoteId)))
+                throw new Error("Cópia não confirmada");
               showToast({ type: "success", message: "ID remoto copiado!" });
             } catch {
               showToast({

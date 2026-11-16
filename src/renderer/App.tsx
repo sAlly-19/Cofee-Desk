@@ -155,7 +155,8 @@ export default function App(): JSX.Element {
   const handleCopyId = useCallback(async () => {
     if (!myId) return;
     try {
-      await navigator.clipboard.writeText(myId);
+      if (!(await window.electronAPI.copyDeviceId(myId)))
+        throw new Error("Cópia não confirmada");
       setIsCopied(true);
       if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
       copyTimerRef.current = setTimeout(() => setIsCopied(false), 2000);
