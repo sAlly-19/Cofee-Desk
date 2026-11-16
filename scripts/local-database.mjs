@@ -4,6 +4,11 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import net from "node:net";
+import { windowsPostgres } from "./windows-test-postgres.mjs";
+const PlatformPostgres =
+  process.platform === "win32"
+    ? windowsPostgres(EmbeddedPostgres)
+    : EmbeddedPostgres;
 
 export function sanitizedDatabaseLog(value, password) {
   return String(value ?? "PostgreSQL encerrou sem informar o motivo")
@@ -19,7 +24,7 @@ export function sanitizedDatabaseLog(value, password) {
 
 export async function localDatabase(
   name = "security",
-  { Postgres = EmbeddedPostgres, startupTimeoutMs = 30000 } = {},
+  { Postgres = PlatformPostgres, startupTimeoutMs = 30000 } = {},
 ) {
   if (!/^[a-z0-9-]+$/i.test(name))
     throw new Error("Nome inválido para banco de testes");

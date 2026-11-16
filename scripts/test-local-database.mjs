@@ -105,3 +105,71 @@ check(
   !report.includes('"password"') && !report.includes('"databaseDir"'),
 );
 console.log(checks.length + " local database helper checks passed");
+
+// Verify the Windows controller path even when this suite runs on another OS.
+const { windowsPostgres } = await import("./windows-test-postgres.mjs");
+const calls = [];
+const Controlled = windowsPostgres(Ready, {
+  resolveBinary: async () => "pg_ctl.exe",
+  run: async (file, args, options) => {
+    calls.push({ file, args, options });
+  },
+  readLog: () => "",
+});
+const native = new Controlled({
+  databaseDir: "test directory with spaces",
+  port: 55441,
+  postgresFlags: ["-h", "127.0.0.1"],
+  onError: () => {},
+});
+await native.start();
+await native.stop();
+check(
+  "Windows starts through pg_ctl rather than postgres.exe",
+  calls[0].file === "pg_ctl.exe" &&
+    calls[0].args[0] === "start" &&
+    calls[0].args.includes("-w"),
+);
+check(
+  "Windows PGDATA remains a separate argument with spaces",
+  calls[0].args[calls[0].args.indexOf("-D") + 1] ===
+    "test directory with spaces" &&
+    calls[0].options.windowsHide === true &&
+    !calls[0].options.shell,
+);
+check(
+  "Windows shutdown is scoped to its own cluster",
+  calls[1].args[0] === "status" &&
+    calls[2].args[0] === "stop" &&
+    calls[2].args.includes("fast") &&
+    calls[2].args.includes("test directory with spaces"),
+);
+const count = calls.length;
+await native.stop();
+check("Windows controller shutdown is idempotent", calls.length === count);
+let startupLog = "";
+const Broken = windowsPostgres(Ready, {
+  resolveBinary: async () => "pg_ctl.exe",
+  run: async (_file, args) => {
+    const error = new Error("native failure");
+    error.code = args[0] === "status" ? 3 : 1;
+    throw error;
+  },
+  readLog: () => "FATAL: fixture Windows startup",
+});
+await assert.rejects(
+  new Broken({
+    databaseDir: "isolated fixture",
+    port: 55442,
+    postgresFlags: [],
+    onError: (s) => {
+      startupLog += s;
+    },
+  }).start(),
+  /native failure/,
+);
+check(
+  "Windows startup failures preserve native stderr",
+  startupLog.includes("FATAL: fixture Windows startup"),
+);
+console.log(checks.length + " total database helper checks passed");

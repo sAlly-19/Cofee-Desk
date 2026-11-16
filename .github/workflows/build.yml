@@ -12,6 +12,14 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
+      # pg_ctl removes the Administrators group from its child token.
+      # Grant only the current runner user access, inherited inside this checkout.
+      - name: Allow restricted PostgreSQL process to use workspace
+        shell: pwsh
+        run: |
+          $runnerSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+          icacls "$env:GITHUB_WORKSPACE" /grant "*${runnerSid}:(OI)(CI)F" /Q
+          if ($LASTEXITCODE -ne 0) { throw "Unable to grant workspace access to runner user" }
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
