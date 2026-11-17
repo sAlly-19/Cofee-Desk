@@ -4,7 +4,7 @@ const { execFileSync } = require("child_process");
 const { path7za } = require("7zip-bin");
 const root = path.resolve(__dirname, "..");
 const version = require("../package.json").version;
-const files = [...new Set(execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], {
+const files = [...new Set(execFileSync("git", ["ls-files", "--cached", "-z"], {
   cwd: root,
   encoding: "utf8",
 })

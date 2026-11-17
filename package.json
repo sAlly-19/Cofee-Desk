@@ -1,7 +1,7 @@
 {
   "name": "coffee-desk",
   "productName": "Coffee-Desk",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Coffee Desk — acesso remoto P2P para Windows",
   "author": "Café - Sistemas & Softwares",
   "license": "MIT",
@@ -59,9 +59,6 @@
     "electron-store": "^8.2.0",
     "electron-updater": "^6.8.9",
     "js-yaml": "^5.5.0",
-    "lucide-react": "^1.71.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
     "semver": "^7.8.6"
   },
   "devDependencies": {
@@ -82,7 +79,10 @@
     "prettier": "^3.3.2",
     "typescript": "^5.5.4",
     "vite": "^8.3.8",
-    "wait-on": "^7.2.0"
+    "wait-on": "^7.2.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "lucide-react": "^1.71.0"
   },
   "private": true,
   "engines": {

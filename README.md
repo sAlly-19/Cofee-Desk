@@ -1,4 +1,4 @@
-# Coffee Desk 1.0.1
+# Coffee Desk 1.0.2
 
 Implementação de sessões, histórico e atualização integrada: consulte [funcionamento, verificações e pendências](docs/RELIABILITY-AND-UPDATES.md). Código em validação; nenhum novo instalador/release foi gerado nesta etapa.
 
@@ -10,7 +10,7 @@ Para iniciar o ambiente local, execute `npm ci`, `npm ci --prefix signaling-serv
 
 Consulte o [relatório de segurança](docs/SECURITY-1.0.1.md). O servidor e o painel foram implantados; o endereço é incorporado ao cliente a partir de configuração local ignorada pelo Git. A confirmação anterior entre duas máquinas refere-se à versão 1.0.0; a versão atual foi validada entre instâncias locais reais.
 
-O novo instalador fica em `release/Coffee-Desk-1.0.1-x64-Setup.exe`.
+Após o empacotamento, o instalador 1.0.2 fica em `release/Coffee-Desk-1.0.2-x64-Setup.exe`.
 
 **Café - Sistemas & Softwares**
 
@@ -82,7 +82,7 @@ npm run build
 npm run package:win
 ```
 
-O build do aplicativo fica em dist-electron. O instalador fica em release/Coffee-Desk-1.0.0-x64-Setup.exe. O helper Win32 é incluído como recurso executável separado do ASAR.
+O build do aplicativo fica em dist-electron. O instalador fica em release/Coffee-Desk-1.0.2-x64-Setup.exe. O helper Win32 é incluído como recurso executável separado do ASAR.
 
 O servidor pode ser compilado e iniciado separadamente:
 
@@ -98,7 +98,7 @@ npm run verify:startup
 npm run verify:redesign
 ```
 
-Os testes usam perfis isolados e salvam os resultados em artifacts. O lint ainda depende da configuração ESLint, ausente no projeto. No PowerShell com bloqueio de scripts, use npm.cmd.
+Os testes usam perfis isolados e salvam os resultados em artifacts. Lint e TypeScript estão disponíveis com `npm run lint` e `npm run typecheck`. No PowerShell com bloqueio de scripts, use npm.cmd.
 
 ## Publicação
 

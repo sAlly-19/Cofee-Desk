@@ -31,7 +31,29 @@
     {
       "from": "dist-electron/main/native",
       "to": "native",
-      "filter": ["CoffeeInput.exe", "CoffeeInput-v2.exe"]
+      "filter": [
+        "CoffeeInput.exe",
+        "CoffeeInput-v2.exe"
+      ]
+    },
+    {
+      "from": "node_modules/react/LICENSE",
+      "to": "licenses/react-LICENSE.txt"
+    },
+    {
+      "from": "node_modules/react-dom/LICENSE",
+      "to": "licenses/react-dom-LICENSE.txt"
+    },
+    {
+      "from": "node_modules/lucide-react/LICENSE",
+      "to": "licenses/lucide-react-LICENSE.txt"
+    },
+    {
+      "from": "assets/fonts",
+      "to": "licenses/fonts",
+      "filter": [
+        "*-OFL.txt"
+      ]
     }
   ],
   "nsis": {
@@ -39,11 +61,24 @@
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "shortcutName": "Coffee Desk"
+    "shortcutName": "Coffee Desk",
+    "installerLanguages": [
+      "pt_BR"
+    ],
+    "installerIcon": "assets/icon.ico",
+    "uninstallerIcon": "assets/icon.ico",
+    "installerHeader": "build/installer/header.bmp",
+    "installerSidebar": "build/installer/sidebar.bmp",
+    "uninstallerSidebar": "build/installer/sidebar.bmp",
+    "include": "build/installer/installer.nsh"
   },
   "publish": {
     "provider": "github",
     "owner": "sAlly-19",
     "repo": "Coffee-Desk"
-  }
+  },
+  "electronLanguages": [
+    "pt-BR",
+    "en-US"
+  ]
 }

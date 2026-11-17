@@ -1,5 +1,17 @@
 # Histórico de versões
 
+## 1.0.2 — 17/11/2026
+
+- Pacote preparado para distribuir somente português brasileiro e inglês do Chromium.
+- React, React DOM e Lucide classificados como dependências de desenvolvimento, mantendo o código da interface no bundle e as licenças no pacote.
+- Artes de instalação/desinstalação em café e cobre, cabeçalho próprio, boas-vindas e conclusão em português e assinatura Café - Sistemas & Softwares.
+- Atualizador e configuração de releases apontam para sAlly-19/Coffee-Desk.
+- Painel de sessão do anfitrião, escolha compartilhada de fontes, barra contextual e confirmação real das trocas de captura.
+- Cópia de ID pelo clipboard nativo e controles do painel de clipboard refinados.
+- Correções dos testes Windows: partida PostgreSQL via pg_ctl com privilégios restritos e clipboard inicial sem tipos MIME.
+
+A geração e validação do instalador e dos metadados associados são etapas separadas; código preparado não significa release publicada.
+
 ## 1.0.1 — 12/11/2026
 
 - Identidade autenticada Ed25519 por servidor, com chave privada protegida pelo Electron safeStorage.
