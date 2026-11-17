@@ -8,7 +8,7 @@ Servidor e painel já foram implantados na Render com PostgreSQL na Neon. HTTPS,
 
 ## 1. Contas, repositório e região
 
-Crie as contas em https://dashboard.render.com/ e https://console.neon.tech/. Ative MFA e guarde os códigos de recuperação fora do repositório. Autorize a Render no GitHub somente para `sAlly-19/Cofee-Desk`. Use planos gratuitos e não habilite recursos pagos.
+Crie as contas em https://dashboard.render.com/ e https://console.neon.tech/. Ative MFA e guarde os códigos de recuperação fora do repositório. Autorize a Render no GitHub somente para `sAlly-19/Coffee-Desk`. Use planos gratuitos e não habilite recursos pagos.
 
 O Blueprint usa Render `virginia`. Crie um projeto Neon novo na AWS US East (N. Virginia), sem restaurar perfis ou bancos de teste. Se a região gratuita não estiver disponível em uma das contas, interrompa e escolha regiões próximas em ambos antes de criar dados reais.
 

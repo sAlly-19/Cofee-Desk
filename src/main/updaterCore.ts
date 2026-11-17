@@ -7,7 +7,7 @@ import { valid, gt, prerelease } from "semver";
 import { load, JSON_SCHEMA } from "js-yaml";
 import type { UpdaterState, AppUpdateInfo } from "../shared/updater";
 export function shouldCheckUpdate(lastCheck:number,now=Date.now()){return !Number.isFinite(lastCheck)||lastCheck<=0||now-lastCheck>=86400000||lastCheck>now;}
-export const UPDATE_REPO = "sAlly-19/Cofee-Desk";
+export const UPDATE_REPO = "sAlly-19/Coffee-Desk";
 const API = "https://api.github.com/repos/" + UPDATE_REPO + "/releases";
 const RELEASE = "https://github.com/" + UPDATE_REPO + "/releases";
 export interface UpdateAdapter {

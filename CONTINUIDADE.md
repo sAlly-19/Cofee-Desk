@@ -54,7 +54,7 @@ Documentação consolidada: [sessões, verificações, atualização e recupera�
 
 Referência: Workspace Fiscal, commit `3f81857e1159c5313c5e585265e0562d53289923`, especialmente `electron/updater.ts` e o hook de atualização.
 
-- `electron-updater`, NSIS, GitHub Releases do repositório `sAlly-19/Cofee-Desk`.
+- `electron-updater`, NSIS, GitHub Releases do repositório `sAlly-19/Coffee-Desk`.
 - Consulta após três segundos quando a consulta anterior tem pelo menos 24 horas, e botão de consulta manual nas preferências.
 - Estados e ações de verificar, disponível, atualizado, baixar, cancelar, depois, instalar/reiniciar, erro/tentar novamente e abrir GitHub.
 - Progresso com bytes e velocidade; notas de versão renderizadas como texto.
@@ -138,7 +138,7 @@ A fronteira nativa confia no renderer oficial, com origem/argumentos validados. 
 ## Retomar no outro computador
 
 1. Este checkpoint é um **commit local**. Enviar os commits ao GitHub antes de trocar de PC: `git push origin main`. Confirmar que deploy automático da Render continua desativado; o envio não deve implantar este protocolo novo inadvertidamente.
-2. No outro computador, clonar/atualizar `sAlly-19/Cofee-Desk` e abrir este arquivo primeiro.
+2. No outro computador, clonar/atualizar `sAlly-19/Coffee-Desk` e abrir este arquivo primeiro.
 3. Instalar Node.js compatível (22.12 ou superior) e executar no PowerShell:
 
    ```powershell

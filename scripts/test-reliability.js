@@ -27,7 +27,7 @@ const version = "1.0.2",
   bytes = Buffer.from("SIMULATED INSTALLER: NEVER EXECUTE"),
   digest = crypto.createHash("sha512").update(bytes).digest("base64");
 const prefix =
-  "https://github.com/sAlly-19/Cofee-Desk/releases/download/v" + version + "/";
+  "https://github.com/sAlly-19/Coffee-Desk/releases/download/v" + version + "/";
 function fixture(options = {}) {
   let busy = false,
     launches = 0,
