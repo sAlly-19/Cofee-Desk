@@ -8,10 +8,11 @@ permissions:
   contents: read
 jobs:
   linux:
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6, reviewed 2026-11-18
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6, reviewed 2026-11-18
         with:
           node-version: "22"
           cache: npm
@@ -22,6 +23,13 @@ jobs:
       - run: npm run test:client-config
       - run: npm run typecheck
       - run: npm run build:electron
+      - run: npm run test:audit-gate
+      - run: npm run audit:gate
+      - run: npm run test:native-boundaries
+      - run: npm run test:call-races
+      - run: npm run test:password-races
+      - run: npm run test:transfer-protocol
+      - run: npm run test:native-input
       - run: npm run test:reliability
       - run: npm run test:hosting
       - run: npm run test:security

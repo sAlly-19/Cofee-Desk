@@ -53,6 +53,7 @@ export async function createAdminApi(
   limiter: Limiter,
   onSanction: (id: string) => Promise<void>,
   online: (id: string) => boolean,
+  metrics: () => object = () => ({}),
 ) {
   const cookieName = config.production ? "__Host-coffee_admin" : "coffee_admin";
   const cookie = (value: string, age: number) =>
@@ -153,6 +154,8 @@ export async function createAdminApi(
         !equal(digest(req.headers["x-csrf-token"]), session.csrf_hash))
     )
       throw new HttpError(403, "Token CSRF inválido");
+    if (route === "/api/admin/metrics" && req.method === "GET")
+      return json(res, 200, metrics());
     if (route === "/api/admin/network" && req.method === "GET") {
       return json(res, 200, { ip });
     }

@@ -1,3 +1,5 @@
+import { assertTrusted } from "./ipcSecurity";
+import { registerSignalingTransport } from "./signalingTransport";
 import { registerFileClipboard } from "./fileClipboard";
 import { registerTray } from "./trayManager";
 import { registerUpdater } from "./updater";
@@ -6,14 +8,11 @@ import { registerHistoryHandlers } from "./historyManager";
 import { app, BrowserWindow, ipcMain } from "electron";
 import { createMainWindow, registerWindowIpcHandlers } from "./windowManager";
 import { registerIpcHandlers } from "./ipcHandlers";
-import { registerConnectionIpcHandlers } from "./connectionManager";
 import { registerScreenIpcHandlers } from "./screenManager";
-import { registerWebRTCElectronHandlers } from "./webrtcManager";
 import { registerInputIpcHandlers, shutdownInputManager } from "./inputManager";
 import { getOrCreateCoffeeDeskId } from "./store";
 import { registerDeviceSecurity } from "./deviceSecurity";
 import { IPC_CHANNELS } from "../shared/ipcChannels";
-import type { CoffeeDeskId, SessionInfo } from "../shared/types";
 
 // Handle Windows Squirrel startup event
 try {
@@ -52,11 +51,12 @@ if (!gotTheLock) {
 
 app.whenReady().then(() => {
   registerDeviceSecurity();
+  registerSignalingTransport();
   registerSessionAuthority();
   registerHistoryHandlers();
   // Inicializa ou recupera o Coffee-Desk ID
-  const coffeeDeskId: CoffeeDeskId = getOrCreateCoffeeDeskId();
-  console.log(`[Coffee-Desk] ID da instância: ${coffeeDeskId.id}`);
+  getOrCreateCoffeeDeskId();
+  console.log("[Coffee-Desk] Identidade local inicializada");
 
   // Registra handlers de janela
   registerWindowIpcHandlers();
@@ -65,14 +65,8 @@ app.whenReady().then(() => {
   registerIpcHandlers();
   registerFileClipboard();
 
-  // Registra handlers de conexão remota
-  registerConnectionIpcHandlers();
-
   // Registra handlers de captura de tela
   registerScreenIpcHandlers();
-
-  // Registra handlers WebRTC
-  registerWebRTCElectronHandlers();
 
   // Registra handlers de controle de entrada (mouse e teclado Win32)
   registerInputIpcHandlers();
@@ -97,22 +91,8 @@ app.on("window-all-closed", () => {
 });
 
 // IPC: Retorna o Coffee-Desk ID da instância local
-ipcMain.handle(IPC_CHANNELS.GET_MY_ID, async () => {
+ipcMain.handle(IPC_CHANNELS.GET_MY_ID, async (event) => {
+  assertTrusted(event);
   const { getOrCreateCoffeeDeskId } = await import("./store");
   return getOrCreateCoffeeDeskId().id;
 });
-
-// IPC: Retorna informações da sessão atual
-ipcMain.handle(
-  IPC_CHANNELS.GET_SESSION_INFO,
-  async (): Promise<SessionInfo> => {
-    const { store } = await import("./store");
-    return {
-      myId: store.get("coffeeDeskId").id,
-      isConnected: false,
-      remoteId: store.get("session.remoteId") ?? null,
-      connectionId: null,
-      connectedAt: null,
-    };
-  },
-);

@@ -125,6 +125,7 @@ export interface FileTransferItem {
   speedBytesPerSec?: number;
   transferredBytes?: number;
   savedPath?: string;
+  awaitingConfirmation?: boolean;
   error?: string;
 }
 

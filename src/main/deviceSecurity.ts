@@ -136,6 +136,71 @@ function derive(password: string, salt: string) {
     ),
   );
 }
+async function signDeviceChallenge(
+  url: string,
+  nonce: unknown,
+  audience: unknown,
+) {
+  const configured = read().url;
+  if (
+    endpoint(url) !== configured ||
+    typeof nonce !== "string" ||
+    !/^[A-Za-z0-9_-]{43}$/.test(nonce) ||
+    typeof audience !== "string"
+  )
+    throw new Error("Desafio inválido");
+  const server = new URL(configured);
+  const expected =
+    (server.protocol === "wss:" ? "https:" : "http:") + "//" + server.host;
+  if (audience !== expected)
+    throw new Error("Servidor de autenticação inesperado");
+  const stored = await identity(url);
+  const decrypted = await safeStorage.decryptStringAsync(
+    Buffer.from(stored.privateKey, "base64"),
+  );
+  const privateKey = createPrivateKey(decrypted.result);
+  if (
+    createPublicKey(privateKey)
+      .export({ format: "der", type: "spki" })
+      .toString("base64") !== stored.publicKey
+  )
+    throw new Error("Identidade inválida");
+  if (decrypted.shouldReEncrypt) {
+    const encrypted = await safeStorage.encryptStringAsync(decrypted.result);
+    const state = read();
+    state.identities[configured].privateKey = encrypted.toString("base64");
+    write(state);
+  }
+  return sign(
+    null,
+    Buffer.from(
+      "coffee-desk:v2\n" + audience + "\n" + nonce + "\n" + stored.publicKey,
+    ),
+    privateKey,
+  ).toString("base64");
+}
+export function deviceAuthentication(profile: string) {
+  return profiles.run(profile, () => {
+    const url = read().url;
+    return {
+      url,
+      publicKey: () =>
+        profiles.run(profile, async () => (await identity(url)).publicKey),
+      sign: (nonce: unknown, audience: unknown) =>
+        profiles.run(profile, () => signDeviceChallenge(url, nonce, audience)),
+    };
+  });
+}
+export function unattendedPolicy(profile: string) {
+  return profiles.run(profile, () => {
+    const state = read();
+    return {
+      enabled: state.enabled,
+      verifier: state.verifier,
+      permissions: state.unattendedPermissions ?? VIEW_ONLY,
+    };
+  });
+}
 let derivations = 0;
 export function registerDeviceSecurity(
   profileForSender: (sender: WebContents) => string = () =>
@@ -195,60 +260,6 @@ export function registerDeviceSecurity(
     write(state);
     return state.url;
   });
-  handle("security:public-key", async (url: string) => {
-    if (endpoint(url) !== read().url)
-      throw new Error("Servidor não configurado");
-    return (await identity(url)).publicKey;
-  });
-  handle(
-    "security:sign",
-    async (url: string, nonce: unknown, audience: unknown) => {
-      const configured = read().url;
-      if (
-        endpoint(url) !== configured ||
-        typeof nonce !== "string" ||
-        !/^[A-Za-z0-9_-]{43}$/.test(nonce) ||
-        typeof audience !== "string"
-      )
-        throw new Error("Desafio inválido");
-      const server = new URL(configured);
-      const expected =
-        (server.protocol === "wss:" ? "https:" : "http:") + "//" + server.host;
-      if (audience !== expected)
-        throw new Error("Servidor de autenticação inesperado");
-      const stored = await identity(url);
-      const decrypted = await safeStorage.decryptStringAsync(
-        Buffer.from(stored.privateKey, "base64"),
-      );
-      const privateKey = createPrivateKey(decrypted.result);
-      if (
-        createPublicKey(privateKey)
-          .export({ format: "der", type: "spki" })
-          .toString("base64") !== stored.publicKey
-      )
-        throw new Error("Identidade inválida");
-      if (decrypted.shouldReEncrypt) {
-        const encrypted = await safeStorage.encryptStringAsync(
-          decrypted.result,
-        );
-        const state = read();
-        state.identities[configured].privateKey = encrypted.toString("base64");
-        write(state);
-      }
-      return sign(
-        null,
-        Buffer.from(
-          "coffee-desk:v2\n" +
-            audience +
-            "\n" +
-            nonce +
-            "\n" +
-            stored.publicKey,
-        ),
-        privateKey,
-      ).toString("base64");
-    },
-  );
   handle(
     "security:password",
     async (password: unknown, enabled: unknown, permissions?: unknown) => {
@@ -340,6 +351,8 @@ export function registerDeviceSecurity(
       const [salt, expected] = state.verifier.split(":");
       const actual = await derive(password, salt);
       const target = Buffer.from(expected, "hex");
+      const latest = read();
+      if (!latest.enabled || latest.verifier !== state.verifier) return false;
       return actual.length === target.length && timingSafeEqual(actual, target);
     } finally {
       derivations--;

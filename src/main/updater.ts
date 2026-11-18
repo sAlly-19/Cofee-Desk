@@ -23,7 +23,7 @@ export function registerUpdater(window: BrowserWindow) {
   const manager = new UpdateManager({
     version: app.getVersion(),
     arch: process.arch,
-    isDev: !app.isPackaged || process.env.NODE_ENV === "development",
+    isDev: !app.isPackaged,
     isPortable: !!(
       process.env.PORTABLE_EXECUTABLE_DIR ||
       process.env.PORTABLE_EXECUTABLE_FILE

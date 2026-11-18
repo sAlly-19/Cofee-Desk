@@ -1,10 +1,10 @@
-# Administração local — Coffee Desk 1.0.1
+# Administração — Coffee Desk 1.0.2
 
 Implantação na Render + Neon: consulte [o guia de implantação](DEPLOY-RENDER-NEON.md). Não é necessário gerar instalador para publicar o servidor e o painel.
 
 **Café - Sistemas & Softwares**
 
-O painel administra identidades de dispositivos, denúncias e sanções. Ele não cria contas para os usuários do aplicativo. Nesta entrega, nenhum serviço foi publicado.
+O painel administra identidades de dispositivos, denúncias e sanções. Ele não cria contas para os usuários do aplicativo. Servidor e painel são publicados separadamente do aplicativo; esta etapa de correções não fez deploy.
 
 ## Iniciar com PostgreSQL local
 
@@ -54,9 +54,9 @@ No painel, entre com usuário, senha e código do autenticador. Um código utili
 
 As ações entram em vigor no servidor. Ao suspender um dispositivo conectado, o serviço encerra a chamada dos dois participantes e fecha a sinalização do dispositivo suspenso. Os clientes oficiais interrompem a sessão e pausam a entrada nativa. Após desbloqueio ou vencimento, o usuário pode clicar em **Reconectar** ou reiniciar o aplicativo.
 
-## Cliente 1.0.1
+## Cliente 1.0.2
 
-Configure o servidor em **Configurações → Servidor de sinalização**. Fora de loopback, o endereço precisa usar `wss://`. O histórico fica separado pelo endereço do servidor; os registros da versão anterior são preservados, mas não são reutilizados automaticamente.
+O cliente usa automaticamente o endereço incorporado por configuração privada de build. A interface não pede uma URL ao usuário. Preferências explícitas anteriores são preservadas e o histórico permanece separado por servidor. Fora de loopback, a configuração exige `wss://`. O histórico fica separado pelo endereço do servidor; os registros da versão anterior são preservados, mas não são reutilizados automaticamente.
 
 As denúncias podem ser enviadas nas opções de um dispositivo recente ou na sessão ativa. Elas incluem o remetente autenticado, o alvo, a categoria, a descrição e a referência da sessão ativa quando houver. O limite é de 2.000 caracteres; anexos, gravações e capturas não são enviados.
 
@@ -80,9 +80,13 @@ O comando `admin:create` também recebe o JSON de usuário e senha pela entrada 
 
 Em produção, execute migrações com uma credencial administrativa e rode a aplicação com uma credencial de menor privilégio. O servidor de produção verifica a versão do esquema e não executa DDL na inicialização. Faça backup do banco e do segredo de criptografia; perder o segredo impede a leitura dos cadastros TOTP existentes.
 
-## Antes da hospedagem
+## Operação do serviço
 
-A escolha do provedor permanece pendente. Uma publicação futura precisa de TLS, banco persistente, configuração de origem, segredos privados, backup e monitoramento de cotas. Não exponha `dev:secure` à internet.
+A infraestrutura escolhida é Render + Neon, em beta e sujeita às cotas e suspensão dos recursos gratuitos. Preserve TLS, banco persistente, origens, segredos, backups e monitoramento. Não exponha `dev:secure` à internet.
+
+A API autenticada `GET /api/admin/metrics` fornece conexões/chamadas, fila, RSS/heap, pool e p95 do event loop, sem IDs ou conteúdo das sessões. Não há métricas operacionais públicas. Configure alertas pelos recursos dos provedores; não use pings artificiais para impedir suspensão.
+
+Consulte [retenção real e decisões pendentes](DATA-RETENTION.md) e [resposta a incidentes](INCIDENT-RESPONSE.md).
 
 Em produção, configure `NODE_ENV=production`, `PUBLIC_ORIGIN=https://...` e o cliente com `wss://.../ws`. O serviço HTTP deve ficar atrás de um terminador TLS controlado. Se usar proxy, habilite `TRUST_PROXY` e configure `TRUSTED_PROXY_IPS` com os IPs reais desse proxy; cabeçalhos encaminhados por outras origens são ignorados. PostgreSQL externo exige `sslmode=verify-full`.
 

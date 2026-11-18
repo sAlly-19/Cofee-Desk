@@ -198,8 +198,14 @@ export function useCallManager({
       id: string,
       chosen: SessionPermissions = FULL_PERMISSIONS,
       sourceId?: string,
+      unattended = false,
     ) => {
-      if (answering || current.current?.role !== "host") return;
+      if (
+        answering ||
+        current.current?.role !== "host" ||
+        current.current.remoteId !== id
+      )
+        return;
       const pending = current.current;
       setAnswering(true);
       if (confirmationTimeout.current)
@@ -222,6 +228,8 @@ export function useCallManager({
       setConnectionError(null);
       try {
         const sources = await window.electronAPI.getDesktopSources();
+        if (current.current !== pending || pending.entry.result !== "calling")
+          return;
         const selected = sourceId
           ? sources.find((s: any) => s.id === sourceId)
           : sources.find(
@@ -232,10 +240,22 @@ export function useCallManager({
         const capture = await window.electronAPI.startDesktopStream(
           selected.id,
         );
-        if (!current.current || current.current.remoteId !== id) return;
+        if (current.current !== pending || pending.entry.result !== "calling")
+          return;
+        if (unattended) {
+          const latest = await window.electronAPI.getSecuritySettings();
+          if (current.current !== pending) return;
+          if (!latest.enabled) {
+            clearTimeout(confirmationTimeout.current!);
+            setAnswering(false);
+            return;
+          }
+        }
         setSourceKind(capture.kind);
         sendWsMessage({
           type: "call-accepted",
+          callId: pending.callId,
+          unattended,
           targetId: id,
           permissions: {
             ...chosen,
@@ -245,6 +265,7 @@ export function useCallManager({
         });
         setDiagnostic({ stage: "call", code: "CONFIRMING", state: "waiting" });
       } catch {
+        if (current.current !== pending) return;
         if (confirmationTimeout.current)
           clearTimeout(confirmationTimeout.current);
         setAnswering(false);
@@ -347,8 +368,19 @@ export function useCallManager({
           typeof msg.password === "string" &&
           (await window.electronAPI.verifyAccessPassword(msg.password))
         ) {
+          if (current.current !== c) return;
           const settings = await window.electronAPI.getSecuritySettings();
-          await acceptIncomingCall(msg.fromId, settings.unattendedPermissions);
+          if (current.current !== c) return;
+          if (!settings.enabled) {
+            void window.electronAPI.notifyIncomingCall().catch(() => {});
+            return;
+          }
+          await acceptIncomingCall(
+            msg.fromId,
+            settings.unattendedPermissions,
+            undefined,
+            true,
+          );
         } else {
           void window.electronAPI.notifyIncomingCall().catch(() => {});
         }
@@ -377,7 +409,12 @@ export function useCallManager({
             permissions: msg.permissions,
           });
         } catch {
-          sendWsMessage({ type: "disconnect", targetId: c.remoteId });
+          if (current.current !== c) return;
+          sendWsMessage({
+            type: "disconnect",
+            targetId: c.remoteId,
+            callId: c.callId,
+          });
           finish("failed", "NATIVE_SESSION_FAILED");
           setConnectionStatus("error");
           setConnectionError(
@@ -421,11 +458,27 @@ export function useCallManager({
         validPermissions(msg.permissions)
       ) {
         const active = current.current;
-        await window.electronAPI.confirmSession({
-          callId: msg.callId,
-          role: active.role,
-          permissions: msg.permissions,
-        });
+        try {
+          await window.electronAPI.confirmSession({
+            callId: msg.callId,
+            role: active.role,
+            permissions: msg.permissions,
+          });
+        } catch {
+          if (current.current !== active) return;
+          sendWsMessage({
+            type: "disconnect",
+            targetId: active.remoteId,
+            callId: active.callId,
+          });
+          finish("failed", "NATIVE_SESSION_FAILED");
+          setConnectionStatus("error");
+          setConnectionError(
+            "Não foi possível aplicar as permissões. A sessão foi encerrada.",
+          );
+          return;
+        }
+        if (current.current !== active) return;
         setPermissions(msg.permissions);
         setSourceKind(msg.sourceKind);
         if (active.role === "host")

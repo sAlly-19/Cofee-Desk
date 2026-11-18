@@ -18,6 +18,7 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const checks = [],
   errors = [];
 const securityProfiles = new Map();
+let signalingOffline = false;
 function check(name, condition, detail) {
   checks.push({ name, passed: !!condition, detail });
   console.log(
@@ -85,6 +86,7 @@ async function reload(win) {
   await ready(win);
 }
 async function capture(win, name) {
+  if (verify && process.env.COFFEE_CAPTURE_TESTS !== "1") return;
   const wasVisible = win.isVisible();
   if (!wasVisible) win.showInactive();
   try {
@@ -116,6 +118,21 @@ async function create(partition, width = 1672, height = 941) {
     },
   });
   securityProfiles.set(win.webContents.id, partition);
+  if (verify && process.env.COFFEE_TEST_SIGNALING_URL) {
+    const profile = path.join(out, "secure-identities", partition);
+    fs.mkdirSync(profile, { recursive: true });
+    const file = path.join(profile, "device-security-v2.json");
+    if (!fs.existsSync(file))
+      fs.writeFileSync(
+        file,
+        JSON.stringify({
+          url: process.env.COFFEE_TEST_SIGNALING_URL,
+          urlSource: "explicit",
+          enabled: false,
+          identities: {},
+        }),
+      );
+  }
   win.webContents.on("console-message", (_event, ...args) => {
     const detail = args[0];
     const message = typeof detail === "object" ? detail.message : args[1];
@@ -170,6 +187,18 @@ async function run() {
   require(
     path.join(root, "dist-electron/main/sessionAuthority"),
   ).registerSessionAuthority();
+  require("../dist-electron/main/signalingTransport").registerSignalingTransport(
+    (sender) =>
+      path.join(
+        out,
+        "secure-identities",
+        securityProfiles.get(sender.id) || "default",
+      ),
+    (url) => {
+      if (signalingOffline) throw Error("Simulated offline transport");
+      return new WebSocket(url);
+    },
+  );
   require(
     path.join(root, "dist-electron/main/historyManager"),
   ).registerHistoryHandlers((sender) =>
@@ -385,8 +414,9 @@ async function run() {
     check("Independent peer has real unique ID", !!peerId && peerId !== id);
     check(
       "Sandboxed preload exposes native APIs",
-      await js(win, 'typeof window.electronAPI?.setMyId === "function"'),
+      await js(win, 'typeof window.electronAPI?.signaling?.open === "function" && typeof window.electronAPI?.getMyId === "function"'),
     );
+    check("Sandboxed preload does not expose identity mutation or signing", await js(win, 'window.electronAPI.setMyId === undefined && window.electronAPI.signDeviceChallenge === undefined && window.electronAPI.getDevicePublicKey === undefined'));
     await fill(win, "#remote-id", peerId);
     await js(win, 'document.querySelector(".connect-form").requestSubmit()');
     check(
@@ -1334,10 +1364,7 @@ async function run() {
     );
     await js(win, 'document.querySelector(".modal-close").click()');
     // A failed registration must not keep the ready badge from a previous connection.
-    win.webContents.session.webRequest.onBeforeRequest(
-      { urls: ["ws://localhost:8080/*"] },
-      (_details, callback) => callback({ cancel: true }),
-    );
+    signalingOffline = true;
     await reload(win);
     await wait(600);
     check(
@@ -1345,7 +1372,7 @@ async function run() {
       await js(win, '!document.querySelector(".access-badge.is-ready")'),
     );
     await capture(win, "signaling-offline");
-    win.webContents.session.webRequest.onBeforeRequest(null);
+    signalingOffline = false;
     await reload(win);
     check(
       "Reconnect registers again",

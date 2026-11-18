@@ -1,3 +1,4 @@
+import { monitorEventLoopDelay } from "node:perf_hooks";
 import {
   validPermissions,
   PERMISSION_CAPABILITY,
@@ -105,8 +106,30 @@ export async function startServer(config: Config) {
       client.ws.close(4403, "Access revoked");
     }
   }
-  const admin = await createAdminApi(pool, config, limiter, sanction, (id) =>
-    byId.has(id),
+  const loopDelay = monitorEventLoopDelay({ resolution: 20 });
+  loopDelay.enable();
+  const admin = await createAdminApi(
+    pool,
+    config,
+    limiter,
+    sanction,
+    (id) => byId.has(id),
+    () => ({
+      uptimeSeconds: Math.floor(process.uptime()),
+      connections: clients.size,
+      calls: calls.size,
+      queuedBytes,
+      memory: {
+        rssBytes: process.memoryUsage().rss,
+        heapUsedBytes: process.memoryUsage().heapUsed,
+      },
+      database: {
+        total: pool.totalCount,
+        idle: pool.idleCount,
+        waiting: pool.waitingCount,
+      },
+      eventLoopP95Ms: Number((loopDelay.percentile(95) / 1e6).toFixed(2)),
+    }),
   );
   const server = http.createServer((req, res) => {
     res.setHeader("Cache-Control", "no-store");
@@ -133,7 +156,10 @@ export async function startServer(config: Config) {
         throw new HttpError(403, "HTTPS required");
       if (req.method === "GET" && req.url === "/health") {
         await pool.query("SELECT 1");
-        return json(res, 200, { status: "ok", version: "1.0.1" });
+        return json(res, 200, {
+          status: "ok",
+          version: require("../package.json").version,
+        });
       }
       if (req.url?.startsWith("/api/admin/")) return admin(req, res, ip);
       if (req.method !== "GET") throw new HttpError(405, "Method not allowed");
@@ -450,6 +476,11 @@ export async function startServer(config: Config) {
       if (
         data.password !== undefined &&
         (!text(data.password, 1, 256) ||
+          !limiter.allow(
+            "pwd-target:" + data.targetId,
+            config.passwordLimit * 3,
+            900000,
+          ) ||
           !limiter.allow(
             "pwd:" + client.id + ":" + data.targetId,
             config.passwordLimit,
@@ -784,6 +815,7 @@ export async function startServer(config: Config) {
     port: (server.address() as any).port,
     pool,
     close: async () => {
+      loopDelay.disable();
       clearInterval(heartbeat);
       clearInterval(cleanup);
       for (const call of [...calls.values()])

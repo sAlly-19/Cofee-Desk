@@ -54,6 +54,8 @@ interface IncomingTransfer {
   startTime: number;
   lastProgressTime: number;
   lastBytes: number;
+  lastActivity: number;
+  finishing?: boolean;
 }
 
 export function useFileTransfer(
@@ -68,11 +70,15 @@ export function useFileTransfer(
   const [isSending, setIsSending] = useState(false);
 
   // Fila de arquivos para envio
-  const sendQueueRef = useRef<File[]>([]);
+  const sendQueueRef = useRef<{ file: File; fileId: string }[]>([]);
   const isProcessingQueueRef = useRef<boolean>(false);
   const activeSendAbortRef = useRef<{ [fileId: string]: boolean }>({});
 
-  // Armazenamento de arquivos recebidos em streaming
+  const acknowledgments = useRef(
+    new Map<string, { resolve: () => void; reject: (error: Error) => void }>(),
+  );
+
+  // Recebimentos limitados em memória; streaming para disco será tratado separadamente.
   const clipboardPolicy = useRef(clipboardAllowed);
   clipboardPolicy.current = clipboardAllowed;
   const clipboardResults = useRef<{ batch: string; path: string }[]>([]);
@@ -87,12 +93,18 @@ export function useFileTransfer(
         for (const id of Object.keys(activeSendAbortRef.current))
           activeSendAbortRef.current[id] = true;
         incomingTransfersRef.current.clear();
+        for (const ack of acknowledgments.current.values())
+          ack.reject(new Error("Permissão revogada"));
+        acknowledgments.current.clear();
       };
     }
     sendQueueRef.current = [];
     for (const id of Object.keys(activeSendAbortRef.current))
       activeSendAbortRef.current[id] = true;
     incomingTransfersRef.current.clear();
+    for (const ack of acknowledgments.current.values())
+      ack.reject(new Error("Permissão revogada"));
+    acknowledgments.current.clear();
     setTransfers((prev) =>
       prev.map((t) =>
         ["pending", "sending", "receiving"].includes(t.status)
@@ -116,6 +128,7 @@ export function useFileTransfer(
     if (!dataChannel) return;
 
     const handleMessage = async (event: MessageEvent) => {
+      let currentFile: string | undefined;
       try {
         if (
           !allowedRef.current ||
@@ -126,12 +139,46 @@ export function useFileTransfer(
         const msg =
           typeof event.data === "string" ? JSON.parse(event.data) : null;
         if (!msg || !msg.type) return;
+        currentFile = typeof msg.fileId === "string" ? msg.fileId : undefined;
 
         switch (msg.type) {
+          case "file-ack": {
+            if (typeof msg.fileId !== "string") return;
+            acknowledgments.current.get(msg.fileId)?.resolve();
+            return;
+          }
+          case "file-error": {
+            if (
+              typeof msg.fileId !== "string" ||
+              !Object.hasOwn(activeSendAbortRef.current, msg.fileId)
+            )
+              return;
+            acknowledgments.current
+              .get(msg.fileId)
+              ?.reject(
+                new Error("O destino não confirmou a gravação do arquivo."),
+              );
+            activeSendAbortRef.current[msg.fileId] = true;
+            setTransfers((prev) =>
+              prev.map((t) =>
+                t.fileId === msg.fileId
+                  ? {
+                      ...t,
+                      status: "error",
+                      awaitingConfirmation: false,
+                      error: "O destino não conseguiu gravar o arquivo.",
+                      speedBytesPerSec: 0,
+                    }
+                  : t,
+              ),
+            );
+            return;
+          }
           case "file-meta": {
             const { fileId, fileName, fileSize, mimeType, totalChunks } = msg;
             if (
               typeof fileId !== "string" ||
+              !fileId ||
               fileId.length > 100 ||
               typeof fileName !== "string" ||
               fileName.length > 200 ||
@@ -140,6 +187,12 @@ export function useFileTransfer(
               fileSize > 32 * 1024 * 1024 ||
               totalChunks !== Math.ceil(fileSize / CHUNK_SIZE) ||
               incomingTransfersRef.current.size >= 4 ||
+              [...incomingTransfersRef.current.values()].reduce(
+                (sum, t) => sum + t.fileSize,
+                0,
+              ) +
+                fileSize >
+                64 * 1024 * 1024 ||
               incomingTransfersRef.current.has(fileId)
             )
               return;
@@ -163,6 +216,7 @@ export function useFileTransfer(
               totalChunks,
               receivedChunks: new Map(),
               startTime: Date.now(),
+              lastActivity: Date.now(),
               lastProgressTime: Date.now(),
               lastBytes: 0,
             });
@@ -192,7 +246,7 @@ export function useFileTransfer(
           case "file-chunk": {
             const { fileId, chunkIndex, data } = msg;
             const incoming = incomingTransfersRef.current.get(fileId);
-            if (!incoming) return;
+            if (!incoming || incoming.finishing) return;
 
             if (
               !Number.isSafeInteger(chunkIndex) ||
@@ -206,6 +260,7 @@ export function useFileTransfer(
             const chunkBuffer = base64ToArrayBuffer(data);
             if (chunkBuffer.byteLength > CHUNK_SIZE) return;
             incoming.receivedChunks.set(chunkIndex, chunkBuffer);
+            incoming.lastActivity = Date.now();
 
             const receivedCount = incoming.receivedChunks.size;
             const percent = Math.min(
@@ -244,11 +299,9 @@ export function useFileTransfer(
           case "file-done": {
             const { fileId } = msg;
             const incoming = incomingTransfersRef.current.get(fileId);
-            if (!incoming) return;
+            if (!incoming || incoming.finishing) return;
 
-            console.log(
-              `[FileTransfer] Download concluído para: ${incoming.fileName}`,
-            );
+            incoming.finishing = true;
 
             // Reúne todos os chunks em ordem
             const sortedBuffers: ArrayBuffer[] = [];
@@ -267,7 +320,7 @@ export function useFileTransfer(
               !allowedRef.current
             )
               throw new Error("Arquivo incompleto");
-            incomingTransfersRef.current.delete(fileId);
+            // Mantém identidade do recebimento até confirmar a gravação.
 
             // Salva o arquivo no sistema
             let savedFilePath: string | undefined;
@@ -286,6 +339,11 @@ export function useFileTransfer(
               }
 
               const base64Data = arrayBufferToBase64(combined.buffer);
+              if (
+                !allowedRef.current ||
+                incomingTransfersRef.current.get(fileId) !== incoming
+              )
+                return;
               const result = await window.electronAPI.saveFileToDownloads(
                 incoming.fileName,
                 base64Data,
@@ -296,18 +354,19 @@ export function useFileTransfer(
                 savedFilePath = result.filePath;
               }
             } else {
-              // Fallback para Web Browser: dispara download via Blob
-              const blob = new Blob(sortedBuffers, { type: incoming.mimeType });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = incoming.fileName;
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-              setTimeout(() => URL.revokeObjectURL(url), 10000);
+              throw new Error(
+                "Gravação nativa indisponível; recebimento não confirmado",
+              );
             }
 
+            if (
+              !allowedRef.current ||
+              incomingTransfersRef.current.get(fileId) !== incoming
+            )
+              return;
+            incomingTransfersRef.current.delete(fileId);
+            if (dataChannel.readyState === "open")
+              dataChannel.send(JSON.stringify({ type: "file-ack", fileId }));
             setTransfers((prev) =>
               prev.map((t) =>
                 t.fileId === fileId
@@ -365,7 +424,17 @@ export function useFileTransfer(
 
           case "file-cancel": {
             const { fileId } = msg;
+            if (
+              !incomingTransfersRef.current.has(fileId) &&
+              !Object.hasOwn(activeSendAbortRef.current, fileId)
+            )
+              return;
             incomingTransfersRef.current.delete(fileId);
+            if (Object.hasOwn(activeSendAbortRef.current, fileId))
+              activeSendAbortRef.current[fileId] = true;
+            acknowledgments.current
+              .get(fileId)
+              ?.reject(new Error("Transferência cancelada pelo destino"));
             setTransfers((prev) =>
               prev.map((t) =>
                 t.fileId === fileId
@@ -381,38 +450,112 @@ export function useFileTransfer(
             break;
           }
         }
-      } catch (err) {
-        console.error(
-          "[FileTransfer] Erro ao processar mensagem do canal:",
-          err,
-        );
+      } catch {
+        if (currentFile && incomingTransfersRef.current.has(currentFile)) {
+          incomingTransfersRef.current.delete(currentFile);
+          if (dataChannel.readyState === "open")
+            dataChannel.send(
+              JSON.stringify({ type: "file-error", fileId: currentFile }),
+            );
+          setTransfers((prev) =>
+            prev.map((t) =>
+              t.fileId === currentFile
+                ? {
+                    ...t,
+                    status: "error",
+                    error: "Não foi possível concluir o recebimento.",
+                    speedBytesPerSec: 0,
+                  }
+                : t,
+            ),
+          );
+          showToast({
+            type: "error",
+            message:
+              "Não foi possível receber o arquivo. O remetente foi informado.",
+          });
+        }
       }
     };
 
+    const expire = setInterval(() => {
+      for (const [fileId, incoming] of incomingTransfersRef.current) {
+        if (Date.now() - incoming.lastActivity < 60000) continue;
+        incomingTransfersRef.current.delete(fileId);
+        if (dataChannel.readyState === "open")
+          dataChannel.send(JSON.stringify({ type: "file-cancel", fileId }));
+        setTransfers((prev) =>
+          prev.map((t) =>
+            t.fileId === fileId
+              ? {
+                  ...t,
+                  status: "error",
+                  error: "Recebimento expirou sem atividade.",
+                  speedBytesPerSec: 0,
+                }
+              : t,
+          ),
+        );
+      }
+    }, 5000);
+    const closed = () => {
+      incomingTransfersRef.current.clear();
+      for (const ack of acknowledgments.current.values())
+        ack.reject(new Error("Canal encerrado"));
+      acknowledgments.current.clear();
+    };
+    dataChannel.addEventListener("close", closed);
     dataChannel.addEventListener("message", handleMessage);
     return () => {
+      clearInterval(expire);
+      closed();
+      dataChannel.removeEventListener("close", closed);
       dataChannel.removeEventListener("message", handleMessage);
     };
   }, [dataChannel, showToast]);
 
   // Aguarda drenagem do buffer do WebRTC se estiver cheio (Flow Control)
-  const waitForBufferDrain = (channel: RTCDataChannel): Promise<void> => {
-    return new Promise((resolve) => {
+  const waitForBufferDrain = (
+    channel: RTCDataChannel,
+    fileId: string,
+  ): Promise<void> =>
+    new Promise((resolve, reject) => {
+      if (channel.readyState !== "open") {
+        reject(new Error("Canal encerrado"));
+        return;
+      }
       if (channel.bufferedAmount <= HIGH_WATER_MARK) {
         resolve();
         return;
       }
-      const onLow = () => {
+      const cleanup = () => {
         clearTimeout(timer);
-        channel.removeEventListener("close", onLow);
-        channel.removeEventListener("bufferedamountlow", onLow);
+        clearInterval(cancellation);
+        channel.removeEventListener("close", closed);
+        channel.removeEventListener("bufferedamountlow", low);
+      };
+      const low = () => {
+        if (channel.bufferedAmount > HIGH_WATER_MARK) return;
+        cleanup();
         resolve();
       };
-      const timer = setTimeout(onLow, 2000);
-      channel.addEventListener("close", onLow, { once: true });
-      channel.addEventListener("bufferedamountlow", onLow);
+      const closed = () => {
+        cleanup();
+        reject(new Error("Canal encerrado"));
+      };
+      const timer = setTimeout(() => {
+        cleanup();
+        reject(new Error("Canal sem capacidade para enviar"));
+      }, 15000);
+      const cancellation = setInterval(() => {
+        if (!allowedRef.current || activeSendAbortRef.current[fileId]) {
+          cleanup();
+          reject(new Error("Transferência cancelada"));
+        }
+      }, 100);
+      channel.addEventListener("close", closed, { once: true });
+      channel.addEventListener("bufferedamountlow", low);
     });
-  };
 
   // Processa a fila de arquivos sequencialmente
   const processQueue = useCallback(async () => {
@@ -439,8 +582,7 @@ export function useFileTransfer(
         dataChannel.readyState === "open" &&
         sendQueueRef.current.length > 0
       ) {
-        const file = sendQueueRef.current.shift()!;
-        const fileId = `f-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+        const { file, fileId } = sendQueueRef.current.shift()!;
         activeSendAbortRef.current[fileId] = false;
 
         const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
@@ -448,7 +590,7 @@ export function useFileTransfer(
         // Registra como sending na lista de transfers
         setTransfers((prev) =>
           prev.map((t) =>
-            t.fileName === file.name && t.status === "pending"
+            t.fileId === fileId && t.status === "pending"
               ? { ...t, fileId, status: "sending", progress: 0 }
               : t,
           ),
@@ -458,6 +600,7 @@ export function useFileTransfer(
         dataChannel.send(
           JSON.stringify({
             type: "file-meta",
+            acknowledgment: 1,
             clipboardBatch: (
               file as File & { coffeeClipboard?: { batchId: string } }
             ).coffeeClipboard?.batchId,
@@ -490,7 +633,7 @@ export function useFileTransfer(
           }
 
           // Aguarda esvaziamento do buffer se ultrapassou HIGH_WATER_MARK
-          await waitForBufferDrain(dataChannel);
+          await waitForBufferDrain(dataChannel, fileId);
 
           const slice = file.slice(offset, offset + CHUNK_SIZE);
           const arrayBuffer = await slice.arrayBuffer();
@@ -526,7 +669,7 @@ export function useFileTransfer(
             lastBytesSent = offset;
 
             const progress = Math.min(
-              100,
+              99,
               Math.round((offset / file.size) * 100),
             );
             setTransfers((prev) =>
@@ -550,13 +693,46 @@ export function useFileTransfer(
           dataChannel.readyState === "open" &&
           !activeSendAbortRef.current[fileId]
         ) {
+          const acknowledged = new Promise<void>((resolve, reject) => {
+            const timer = setTimeout(() => {
+              acknowledgments.current.delete(fileId);
+              reject(
+                new Error(
+                  "O destino não confirmou a gravação. Verifique a conexão e a versão do outro aplicativo.",
+                ),
+              );
+            }, 20000);
+            acknowledgments.current.set(fileId, {
+              resolve: () => {
+                clearTimeout(timer);
+                acknowledgments.current.delete(fileId);
+                resolve();
+              },
+              reject: (error) => {
+                clearTimeout(timer);
+                acknowledgments.current.delete(fileId);
+                reject(error);
+              },
+            });
+          });
+          void acknowledged.catch(() => {});
           dataChannel.send(JSON.stringify({ type: "file-done", fileId }));
+          setTransfers((prev) =>
+            prev.map((t) =>
+              t.fileId === fileId
+                ? { ...t, progress: 99, awaitingConfirmation: true }
+                : t,
+            ),
+          );
+          await acknowledged;
+          if (!allowedRef.current || activeSendAbortRef.current[fileId]) break;
           setTransfers((prev) =>
             prev.map((t) =>
               t.fileId === fileId
                 ? {
                     ...t,
                     status: "complete",
+                    awaitingConfirmation: false,
                     progress: 100,
                     speedBytesPerSec: 0,
                     transferredBytes: file.size,
@@ -573,13 +749,36 @@ export function useFileTransfer(
 
         delete activeSendAbortRef.current[fileId];
       }
-    } catch {
+    } catch (error) {
+      const cancelled =
+        error instanceof Error &&
+        /cancelada|revogada|encerrado/i.test(error.message);
       setTransfers((prev) =>
         prev.map((t) =>
-          t.status === "sending" ? { ...t, status: "cancelled" } : t,
+          t.status === "sending"
+            ? {
+                ...t,
+                status: cancelled ? "cancelled" : "error",
+                awaitingConfirmation: false,
+                error: cancelled
+                  ? undefined
+                  : "O destino não confirmou a gravação.",
+                speedBytesPerSec: 0,
+              }
+            : t,
         ),
       );
+      if (!cancelled)
+        showToast({
+          type: "error",
+          message:
+            "O envio não foi confirmado pelo destino. Verifique a conexão e se os dois aplicativos estão atualizados.",
+        });
     } finally {
+      for (const ack of acknowledgments.current.values())
+        ack.reject(new Error("Canal encerrado"));
+      acknowledgments.current.clear();
+      activeSendAbortRef.current = {};
       isProcessingQueueRef.current = false;
       setIsSending(false);
     }
@@ -605,10 +804,11 @@ export function useFileTransfer(
 
       const fileArray = Array.from(files);
       if (
-        [...sendQueueRef.current, ...fileArray].reduce(
-          (bytes, file) => bytes + file.size,
+        sendQueueRef.current.reduce(
+          (bytes, item) => bytes + item.file.size,
           0,
-        ) >
+        ) +
+          fileArray.reduce((bytes, file) => bytes + file.size, 0) >
         64 * 1024 * 1024
       ) {
         showToast({
@@ -630,8 +830,8 @@ export function useFileTransfer(
       }
       if (fileArray.length === 0) return;
 
-      const newItems: FileTransferItem[] = fileArray.map((f, i) => ({
-        fileId: `queue-${Date.now()}-${i}`,
+      const newItems: FileTransferItem[] = fileArray.map((f) => ({
+        fileId: crypto.randomUUID(),
         fileName: f.name,
         fileSize: f.size,
         status: "pending",
@@ -642,7 +842,9 @@ export function useFileTransfer(
       }));
 
       setTransfers((prev) => [...newItems, ...prev].slice(0, 200));
-      sendQueueRef.current.push(...fileArray);
+      sendQueueRef.current.push(
+        ...fileArray.map((file, i) => ({ file, fileId: newItems[i].fileId })),
+      );
 
       processQueue();
     },
@@ -650,16 +852,29 @@ export function useFileTransfer(
   );
 
   // Cancela uma transferência ativa ou pendente
-  const cancelTransfer = useCallback((fileId: string) => {
-    activeSendAbortRef.current[fileId] = true;
-    setTransfers((prev) =>
-      prev.map((t) =>
-        t.fileId === fileId
-          ? { ...t, status: "cancelled", speedBytesPerSec: 0 }
-          : t,
-      ),
-    );
-  }, []);
+  const cancelTransfer = useCallback(
+    (fileId: string) => {
+      incomingTransfersRef.current.delete(fileId);
+      sendQueueRef.current = sendQueueRef.current.filter(
+        (item) => item.fileId !== fileId,
+      );
+      if (Object.hasOwn(activeSendAbortRef.current, fileId))
+        activeSendAbortRef.current[fileId] = true;
+      acknowledgments.current
+        .get(fileId)
+        ?.reject(new Error("Transferência cancelada"));
+      if (dataChannel?.readyState === "open")
+        dataChannel.send(JSON.stringify({ type: "file-cancel", fileId }));
+      setTransfers((prev) =>
+        prev.map((t) =>
+          t.fileId === fileId
+            ? { ...t, status: "cancelled", speedBytesPerSec: 0 }
+            : t,
+        ),
+      );
+    },
+    [dataChannel],
+  );
 
   // Remove da lista do histórico
   const removeTransfer = useCallback((fileId: string) => {

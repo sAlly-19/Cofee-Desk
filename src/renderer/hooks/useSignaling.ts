@@ -1,3 +1,4 @@
+import { SignalingSocket } from "../utils/signalingSocket";
 import {
   supportsSessionConfirmation,
   SERVER_UPGRADE_MESSAGE,
@@ -19,7 +20,7 @@ export function useSignaling({
     [isRegistered, setIsRegistered] = useState(false),
     [myId, setMyId] = useState<string | null>(null),
     [serverError, setServerError] = useState<string | null>(null);
-  const wsRef = useRef<WebSocket | null>(null),
+  const wsRef = useRef<SignalingSocket | null>(null),
     handler = useRef(onSignalingMessage),
     call = useRef<string | null>(null),
     peer = useRef<string | null>(null),
@@ -43,7 +44,7 @@ export function useSignaling({
         JSON.stringify({
           ...data,
           ...(sessionTypes.includes(String(data.type))
-            ? { callId: call.current }
+            ? { callId: data.callId ?? call.current }
             : {}),
         }),
       );
@@ -86,11 +87,7 @@ export function useSignaling({
         setMyId(null);
         setServerStatus("connecting");
         setServerError(null);
-        const publicKey = await window.electronAPI.getDevicePublicKey(
-          settings.url,
-        );
-        if (stopped || currentGeneration !== generation) return;
-        const ws = new WebSocket(settings.url);
+        const ws = new SignalingSocket();
         wsRef.current = ws;
         lastPong = Date.now();
         ws.onopen = () => {
@@ -98,14 +95,11 @@ export function useSignaling({
             ws.close();
             return;
           }
-          ws.send(
-            JSON.stringify({
-              type: "hello",
-              version: 2,
-              publicKey,
-              capabilities: ["session-permissions-v1"],
-            }),
-          );
+          setDiagnostic({
+            stage: "authentication",
+            code: "AUTHENTICATING",
+            state: "waiting",
+          });
         };
         ws.onmessage = (event) => {
           void (async () => {
@@ -114,21 +108,6 @@ export function useSignaling({
             try {
               msg = JSON.parse(event.data);
             } catch {
-              return;
-            }
-            if (msg.type === "challenge") {
-              setDiagnostic({
-                stage: "authentication",
-                code: "AUTHENTICATING",
-                state: "waiting",
-              });
-              const signature = await window.electronAPI.signDeviceChallenge(
-                settings.url,
-                msg.nonce,
-                msg.audience,
-              );
-              if (ws.readyState === WebSocket.OPEN)
-                ws.send(JSON.stringify({ type: "authenticate", signature }));
               return;
             }
             if (msg.type === "registered") {
@@ -159,7 +138,6 @@ export function useSignaling({
               attempt = 0;
               lastPong = Date.now();
               localStorage.setItem("coffee_v2_id:" + settings.url, msg.id);
-              window.electronAPI.setMyId(msg.id);
               heartbeat = setInterval(() => {
                 if (ws.readyState === WebSocket.OPEN) {
                   if (Date.now() - lastPong > 45000) {

@@ -1,3 +1,4 @@
+import { assertTrusted } from "./ipcSecurity";
 import { app, BrowserWindow, ipcMain } from "electron";
 import path from "path";
 import { IPC_CHANNELS } from "../shared/ipcChannels";
@@ -11,7 +12,7 @@ export function createMainWindow(): BrowserWindow {
     return mainWindow;
   }
 
-  const isDev = !app.isPackaged || process.env.NODE_ENV === "development";
+  const isDev = !app.isPackaged;
 
   mainWindow = new BrowserWindow({
     width: 1440,
@@ -108,11 +109,21 @@ export function closeSessionWindow(): void {
  * Registra handlers de IPC relacionados a janelas.
  */
 export function registerWindowIpcHandlers(): void {
-  ipcMain.on(IPC_CHANNELS.WINDOW_MINIMIZE, () => {
+  ipcMain.on(IPC_CHANNELS.WINDOW_MINIMIZE, (event) => {
+    try {
+      assertTrusted(event);
+    } catch {
+      return;
+    }
     mainWindow?.minimize();
   });
 
-  ipcMain.on(IPC_CHANNELS.WINDOW_MAXIMIZE, () => {
+  ipcMain.on(IPC_CHANNELS.WINDOW_MAXIMIZE, (event) => {
+    try {
+      assertTrusted(event);
+    } catch {
+      return;
+    }
     if (mainWindow?.isMaximized()) {
       mainWindow?.unmaximize();
     } else {
@@ -120,7 +131,12 @@ export function registerWindowIpcHandlers(): void {
     }
   });
 
-  ipcMain.on(IPC_CHANNELS.WINDOW_CLOSE, () => {
+  ipcMain.on(IPC_CHANNELS.WINDOW_CLOSE, (event) => {
+    try {
+      assertTrusted(event);
+    } catch {
+      return;
+    }
     mainWindow?.close();
   });
 }

@@ -32,7 +32,6 @@
       "from": "dist-electron/main/native",
       "to": "native",
       "filter": [
-        "CoffeeInput.exe",
         "CoffeeInput-v2.exe"
       ]
     },
@@ -80,5 +79,12 @@
   "electronLanguages": [
     "pt-BR",
     "en-US"
-  ]
+  ],
+  "electronFuses": {
+    "runAsNode": false,
+    "enableNodeOptionsEnvironmentVariable": false,
+    "enableNodeCliInspectArguments": false,
+    "onlyLoadAppFromAsar": true,
+    "enableEmbeddedAsarIntegrityValidation": true
+  }
 }

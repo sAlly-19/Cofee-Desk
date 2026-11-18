@@ -14,10 +14,10 @@ function check(name, condition) {
   console.log("PASS " + name);
 }
 class Device {
-  constructor(url, pair = crypto.generateKeyPairSync("ed25519")) {
+  constructor(url, pair = crypto.generateKeyPairSync("ed25519"), options = {}) {
     this.pair = pair;
     this.messages = [];
-    this.ws = new WebSocket(url);
+    this.ws = new WebSocket(url, options);
     this.ws.on("message", (raw) => {
       this.messages.push(JSON.parse(raw));
     });
@@ -394,6 +394,10 @@ async function run() {
         },
         body: data === undefined ? undefined : JSON.stringify(data),
       });
+    check(
+      "Operational metrics require login",
+      (await admin("metrics")).status === 401,
+    );
     check("Admin data requires login", (await admin("devices")).status === 401);
     check(
       "Cross-origin login rejected",
@@ -439,6 +443,15 @@ async function run() {
       "Session cookie is HttpOnly and SameSite Strict",
       login.headers.get("set-cookie").includes("HttpOnly") &&
         login.headers.get("set-cookie").includes("SameSite=Strict"),
+    );
+    const metrics = await (
+      await admin("metrics", undefined, "", cookie)
+    ).json();
+    check(
+      "Admin metrics omit identities and expose operational data",
+      typeof metrics.connections === "number" &&
+        metrics.memory.rssBytes > 0 &&
+        !JSON.stringify(metrics).includes("public_key"),
     );
     const storedSession = (
       await server.pool.query(
@@ -674,6 +687,45 @@ async function run() {
       "Password guesses are limited per target",
       (await a.take("error")).code === "LIMIT",
     );
+    config.trustProxy = true;
+    const proxied = async (ip) => {
+      const d = await new Device(url, crypto.generateKeyPairSync("ed25519"), {
+        headers: { "x-forwarded-for": ip },
+      }).auth();
+      sockets.push(d);
+      return d;
+    };
+    const aggregateTarget = await proxied("198.51.100.80");
+    const aggregateCallers = [];
+    for (let i = 0; i < 4; i++)
+      aggregateCallers.push(await proxied("198.51.100." + (81 + i)));
+    for (let i = 0; i < config.passwordLimit * 3; i++) {
+      const source = aggregateCallers[Math.floor(i / config.passwordLimit)];
+      source.send({
+        type: "connect-request",
+        targetId: aggregateTarget.id,
+        password: "fixture-only-guess",
+      });
+      const ringing = await source.take("call-ringing");
+      await aggregateTarget.take("incoming-call");
+      source.send({
+        type: "disconnect",
+        targetId: aggregateTarget.id,
+        callId: ringing.callId,
+      });
+      await source.take("peer-disconnected");
+      await aggregateTarget.take("peer-disconnected");
+    }
+    aggregateCallers[3].send({
+      type: "connect-request",
+      targetId: aggregateTarget.id,
+      password: "fixture-only-guess",
+    });
+    check(
+      "Distributed identities and IPs share target password budget",
+      (await aggregateCallers[3].take("error")).code === "LIMIT",
+    );
+    config.trustProxy = false;
     let limitedReports = false;
     for (let i = 0; i < 12; i++) {
       a.send({

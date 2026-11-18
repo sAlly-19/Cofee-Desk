@@ -9,9 +9,10 @@ permissions:
   contents: read
 jobs:
   windows:
+    timeout-minutes: 30
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6, reviewed 2026-11-18
       # pg_ctl removes the Administrators group from its child token.
       # Grant only the current runner user access, inherited inside this checkout.
       - name: Allow restricted PostgreSQL process to use workspace
@@ -20,7 +21,7 @@ jobs:
           $runnerSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
           icacls "$env:GITHUB_WORKSPACE" /grant "*${runnerSid}:(OI)(CI)F" /Q
           if ($LASTEXITCODE -ne 0) { throw "Unable to grant workspace access to runner user" }
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6, reviewed 2026-11-18
         with:
           node-version: "22"
           cache: npm
@@ -36,13 +37,23 @@ jobs:
       - run: npm run build
       - run: npm run test:database-helper
       - run: npm run test:security
+      - run: npm run test:audit-gate
+      - run: npm run audit:gate
+      - run: npm run test:native-boundaries
+      - run: npm run test:call-races
+      - run: npm run test:password-races
+      - run: npm run test:transfer-protocol
+      - run: npm run test:native-input
       - run: npm run test:reliability
       - run: npm run test:file-clipboard
       - run: npm run test:history
       - run: npm run test:pointer-capture
+      - run: npm run test:capture-policy
       - run: npm run test:session-ui
       - run: npm run test:virtual-mouse
       - run: npm run test:update-ui
+      - run: npm run test:device-clipboard
+      - run: npm run test:admin
       - run: npm run test:recovery
       - run: npm run verify:startup
       - if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
@@ -55,7 +66,7 @@ jobs:
       - if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
         run: npm run release:checksums
       - if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6, reviewed 2026-11-18
         with:
           name: Coffee-Desk-Windows-x64
           path: |
@@ -68,7 +79,7 @@ jobs:
 
       - name: Sanitized database startup diagnostics
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6, reviewed 2026-11-18
         with:
           name: database-startup-diagnostics
           path: |

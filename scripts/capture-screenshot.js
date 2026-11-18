@@ -10,9 +10,10 @@ delete env.ELECTRON_RUN_AS_NODE;
 env.COFFEE_TEST_LOCAL_SIGNALING = "1";
 let server;
 let stopDatabase;
+let origin = "http://localhost:8080";
 function online() {
   return new Promise((resolve) => {
-    const req = http.get("http://localhost:8080/health", (res) => {
+    const req = http.get(origin + "/health", (res) => {
       res.resume();
       resolve(res.statusCode === 200);
     });
@@ -25,7 +26,19 @@ function online() {
 }
 (async () => {
   fs.mkdirSync(path.join(root, "artifacts/redesign"), { recursive: true });
-  if (verify && !(await online())) {
+  if (verify) {
+    const net = require("node:net");
+    const port = await new Promise((resolve) => {
+      const probe = net.createServer();
+      probe.listen(0, "127.0.0.1", () => {
+        const port = probe.address().port;
+        probe.close(() => resolve(port));
+      });
+    });
+    origin = "http://localhost:" + port;
+    env.PORT = String(port);
+    env.PUBLIC_ORIGIN = origin;
+    env.COFFEE_TEST_SIGNALING_URL = origin.replace("http:", "ws:") + "/ws";
     const { localDatabase } = await import("./local-database.mjs");
     const db = await localDatabase("electron-postgres-" + process.pid);
     stopDatabase = db.stop;

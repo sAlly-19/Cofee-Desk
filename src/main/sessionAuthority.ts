@@ -9,17 +9,32 @@ export interface NativeSession {
   captureActive?: boolean;
   sourceKind?: "screen" | "window";
   sourceId?: string;
+  isPrimary?: boolean;
   bounds?: { x: number; y: number; width: number; height: number };
 }
 const sessions = new Map<number, NativeSession>();
-const pending = new Set<number>();
+const transportBusy = new Set<number>();
+const pendingHosts = new Map<number, string>();
+export function setPendingHost(sender: number, callId?: string) {
+  if (callId) pendingHosts.set(sender, callId);
+  else pendingHosts.delete(sender);
+}
+export const captureCallId = (sender: number) =>
+  nativeSession(sender)?.callId ?? pendingHosts.get(sender);
+export const maySelectSource = (sender: number) =>
+  pendingHosts.has(sender) || nativeSession(sender)?.role === "host";
+export function setTransportBusy(sender: number, busy: boolean) {
+  if (busy) transportBusy.add(sender);
+  else transportBusy.delete(sender);
+}
 let installing = false;
+export const isInstalling = () => installing;
 export const setInstalling = (value: boolean) => {
   installing = value;
 };
 type NativeSource = Pick<
   NativeSession,
-  "sourceId" | "sourceKind" | "bounds" | "captureActive"
+  "sourceId" | "sourceKind" | "bounds" | "captureActive" | "isPrimary"
 >;
 const sources = new Map<number, NativeSource>();
 export const selectedSource = (sender: number) => sources.get(sender);
@@ -71,16 +86,22 @@ export function setNativeSession(sender: number, state?: NativeSession) {
   }
   for (const listener of listeners) listener(sender, state);
 }
-export const isNativeBusy = () => sessions.size > 0 || pending.size > 0;
+export const isNativeBusy = () => sessions.size > 0 || transportBusy.size > 0;
 const trackedOwners = new Set<number>();
 function trackOwner(sender: WebContents) {
   if (trackedOwners.has(sender.id)) return;
   trackedOwners.add(sender.id);
+  const revoke = () => {
+    transportBusy.delete(sender.id);
+    pendingHosts.delete(sender.id);
+    setNativeSession(sender.id);
+  };
   sender.once("destroyed", () => {
     trackedOwners.delete(sender.id);
-    pending.delete(sender.id);
-    setNativeSession(sender.id);
+    revoke();
   });
+  sender.on("render-process-gone", revoke);
+  sender.on("unresponsive", revoke);
 }
 export function registerSessionAuthority() {
   ipcMain.handle("capture:ready", (event) => {
@@ -97,10 +118,6 @@ export function registerSessionAuthority() {
     assertTrusted(event);
     if (typeof value !== "boolean" || installing)
       throw new Error("Instalação em andamento");
-    if (value) {
-      pending.add(event.sender.id);
-      trackOwner(event.sender);
-    } else pending.delete(event.sender.id);
     return true;
   });
   ipcMain.handle("session:clipboard-read", async (event) => {
@@ -128,7 +145,6 @@ export function registerSessionAuthority() {
     assertTrusted(event);
     if (input !== null && installing)
       throw new Error("Instalação em andamento");
-    pending.delete(event.sender.id);
     if (input === null) {
       setNativeSession(event.sender.id);
       return true;
@@ -142,12 +158,17 @@ export function registerSessionAuthority() {
     )
       throw new Error("Sessão inválida");
     const previous = sessions.get(event.sender.id);
-    if (previous && previous.callId !== s.callId)
-      throw new Error("Encerre a sessão anterior");
+    if (
+      !previous ||
+      previous.callId !== s.callId ||
+      previous.role !== s.role ||
+      (Object.keys(s.permissions) as (keyof SessionPermissions)[]).some(
+        (key) => s.permissions[key] && !previous.permissions[key],
+      )
+    )
+      throw new Error("Confirmação não autorizada pelo serviço");
     setNativeSession(event.sender.id, {
       ...previous,
-      callId: s.callId,
-      role: s.role,
       permissions: { ...s.permissions },
     });
     trackOwner(event.sender);

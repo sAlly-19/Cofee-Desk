@@ -1,0 +1,17 @@
+# Arquitetura em implementação — 1.0.2
+
+A sinalização autenticada agora pertence a src/main/signalingTransport.ts. O renderer usa uma facade IPC (SignalingSocket) e envia intenções; não recebe chave privada nem assinatura de desafios. Main valida UUID/peer/papel/estado, recebe confirmação diretamente do serviço e só então concede recursos em sessionAuthority.
+
+A bridge session:confirmed não cria nem amplia sessão: compara com estado existente e aceita apenas confirmação/redução. Busy autoritativo de chamada pendente/ativa é mantido pelo transporte, independentemente de flags da UI; instalação fica bloqueada durante esse estado. Cancelamento solicita término ao transporte. Crash, travamento e navegação do renderer revogam conexão/recursos; perda de pong encerra no main após a janela de tolerância.
+
+Fonte pode ser enumerada/selecionada pela interface somente para host pendente ou ativo. Captura real exige host confirmado, fonte selecionada e origem/frame válidos. Tela/janela é obtida por getDisplayMedia; janela desabilita controle, sem preview no anfitrião. Webcam/microfone não são permissões genéricas aprovadas. CSP de produção proíbe scripts inline/eval e conexões arbitrárias do renderer; estilos inline existentes são permitidos e isso não habilita scripts inline.
+
+Mídia e dados P2P continuam no Chromium/WebRTC. Backend Node autentica Ed25519 e governa chamadas/permissões; banco PostgreSQL persiste identidades públicas, admin, sanções, denúncias e auditoria. Senha não supervisionada é verificada por scrypt no main de destino e transita pelo serviço em WSS. Serviço é confiado para sinalização; não há fingerprint fora de banda nem TURN.
+
+Arquivos P2P têm limite 32 MiB/unidade, fila de envio 64 MiB/20 itens, recebimentos agregados 64 MiB e quatro simultâneos. Chunks ainda ficam em memória (streaming para disco pendente). Entrada sem atividade expira. Cancelamento remove entrada/fila e notifica peer; conclusão espera confirmação de gravação. Main valida nomes, cria sem sobrescrever e limita recebimentos da sessão a 256 MiB ou 500 arquivos. Ledger é limpo ao trocar/encerrar chamada. Arquivos já salvos permanecem em Downloads, sob controle do usuário.
+
+Abrir arquivo recebido exige sessão/permissão/lista, tipo permitido e confirmação nativa. Arquivos executáveis/atalhos/tipos não permitidos não são abertos pela bridge; usuário pode localizar o recebimento em Downloads. Papel de cliente não autoriza controlar o host local. APIs antigas de conexão/clipboard/WebRTC e assinatura de desafio foram retiradas da bridge; registradores de conexão/WebRTC placeholders não são mais ligados ao main. Módulos legados remanescentes não são o caminho ativo.
+
+Helper v2 é filho Win32 por stdin, sem serviço elevado/porta própria. Build registra SHA-256 no ASAR; pacote só procura esse helper em resources/native e falha fechado se hash não corresponder. Fila nativa limitada e erros assíncronos pausam controle. Autenticidade do pacote completo e revogação de comandos já presentes no pipe continuam riscos residuais, não são resolvidas por hash local isoladamente.
+
+Histórico local por servidor e favoritos preservados. APIs administrativas exigem sessão/TOTP/CSRF conforme verbo. GET /api/admin/metrics é privado e expõe somente dados operacionais. Atualização usa GitHub Releases e instalação explícita com busy do main. Ver status da remediação para evidências e gates ainda pendentes.

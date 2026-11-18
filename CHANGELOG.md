@@ -1,6 +1,6 @@
 # Histórico de versões
 
-## 1.0.2 — 17/11/2026
+## 1.0.2 — preparação atualizada em 18/11/2026
 
 - Pacote preparado para distribuir somente português brasileiro e inglês do Chromium.
 - React, React DOM e Lucide classificados como dependências de desenvolvimento, mantendo o código da interface no bundle e as licenças no pacote.
@@ -9,6 +9,13 @@
 - Painel de sessão do anfitrião, escolha compartilhada de fontes, barra contextual e confirmação real das trocas de captura.
 - Cópia de ID pelo clipboard nativo e controles do painel de clipboard refinados.
 - Correções dos testes Windows: partida PostgreSQL via pg_ctl com privilégios restritos e clipboard inicial sem tipos MIME.
+
+- Sinalização e autenticação no processo principal, com autorização nativa vinculada à chamada confirmada pelo servidor.
+- CSP de produção, captura restrita ao anfitrião autorizado e abertura de arquivos recebidos com validação e confirmação nativa.
+- Transferências com cancelamento, limites, expiração e confirmação após gravação no destino; ambos os clientes novos são necessários para confirmar entrega.
+- Correções de corridas no aceite de chamadas e na verificação de senhas; revogação de recursos após perda do renderer.
+- Integridade do helper nativo, limites de fila, orçamento agregado de tentativas de senha e métricas administrativas privadas.
+- Novas regressões, auditoria documentada, política de segurança e gates de CI. Pendências e exceção temporária de tooling registradas em docs/audit/REMEDIATION-STATUS.md.
 
 A geração e validação do instalador e dos metadados associados são etapas separadas; código preparado não significa release publicada.
 

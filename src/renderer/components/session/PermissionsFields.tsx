@@ -8,7 +8,8 @@ const options = [
   {
     key: "clipboard",
     name: "Compartilhar clipboard",
-    description: "Trocar conteúdo da área de transferência.",
+    description:
+      "O texto copiado pode ser sincronizado automaticamente. Arquivos também exigem a permissão de transferência.",
   },
   {
     key: "files",

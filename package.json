@@ -52,7 +52,17 @@
     "test:virtual-mouse": "node scripts/test-virtual-mouse.js",
     "test:session-ui": "node scripts/test-session-ui.js",
     "test:device-clipboard": "node scripts/test-device-clipboard.js",
-    "test:database-helper": "node scripts/test-local-database.mjs"
+    "test:database-helper": "node scripts/test-local-database.mjs",
+    "test:native-boundaries": "node scripts/test-native-boundaries.js",
+    "test:transfer-protocol": "node scripts/test-transfer-protocol.js",
+    "audit:gate": "node scripts/audit-gate.js",
+    "release:sbom": "node scripts/release-sbom.js",
+    "test:isolated-load": "node scripts/test-isolated-load.js",
+    "test:capture-policy": "node scripts/test-capture-policy.js",
+    "test:native-input": "node scripts/test-native-input.js",
+    "test:audit-gate": "node scripts/test-audit-gate.js",
+    "test:call-races": "node scripts/test-call-races.js",
+    "test:password-races": "node scripts/test-password-races.js"
   },
   "dependencies": {
     "electron-squirrel-startup": "^1.0.1",

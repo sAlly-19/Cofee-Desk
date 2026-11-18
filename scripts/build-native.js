@@ -10,7 +10,9 @@ if (process.platform === "win32") {
   const hash = crypto
       .createHash("sha256")
       .update(fs.readFileSync(source))
-    .update(fs.readFileSync(path.join(root,"src/main/native/VirtualMouse.cs")))
+      .update(
+        fs.readFileSync(path.join(root, "src/main/native/VirtualMouse.cs")),
+      )
       .digest("hex"),
     stamp = path.join(out, ".source-sha256"),
     exe = path.join(out, "CoffeeInput-v2.exe");
@@ -25,7 +27,14 @@ if (process.platform === "win32") {
     );
     execFileSync(
       compiler,
-      ["/nologo", "/optimize", "/target:exe", "/out:" + exe, source,path.join(root,"src/main/native/VirtualMouse.cs")],
+      [
+        "/nologo",
+        "/optimize",
+        "/target:exe",
+        "/out:" + exe,
+        source,
+        path.join(root, "src/main/native/VirtualMouse.cs"),
+      ],
       { stdio: "inherit", windowsHide: true },
     );
     fs.writeFileSync(stamp, hash);
@@ -33,5 +42,18 @@ if (process.platform === "win32") {
   const legacy = path.join(out, "CoffeeInput.exe");
   if (!fs.existsSync(legacy))
     fs.copyFileSync(path.join(root, "src/main/native/CoffeeInput.exe"), legacy);
-  console.log("Native helper compiled and up to date.");
+  const integrity = {
+    version: 1,
+    files: {
+      "CoffeeInput-v2.exe": crypto
+        .createHash("sha256")
+        .update(fs.readFileSync(exe))
+        .digest("hex"),
+    },
+  };
+  fs.writeFileSync(
+    path.join(root, "dist-electron/main/native-integrity.json"),
+    JSON.stringify(integrity),
+  );
+  console.log("Native helper compiled and integrity manifest updated.");
 }

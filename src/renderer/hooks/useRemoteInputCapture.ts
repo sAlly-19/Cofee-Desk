@@ -45,6 +45,14 @@ export function useRemoteInputCapture({
 }: UseRemoteInputCaptureProps) {
   const [isKeyboardFocused, setIsKeyboardFocused] = useState(false);
   const [hostControlEnabled, setHostControlEnabled] = useState(true);
+  useEffect(() => {
+    if (role !== "host") return;
+    let active = true;
+    const receive = (state: {enabled:boolean;ready:boolean}) => { if (active) setHostControlEnabled(state.enabled && state.ready); };
+    if (window.electronAPI?.getInputControlStatus) void window.electronAPI.getInputControlStatus().then(receive).catch(() => { if (active) setHostControlEnabled(false); });
+    const unsubscribe = window.electronAPI?.onInputControlStatus?.(receive);
+    return () => { active = false; unsubscribe?.(); };
+  }, [role]);
   const pointerSequence = useRef(0);
   const frame = useRef(0),
     pendingMove = useRef<ReturnType<typeof videoPoint>>(null),

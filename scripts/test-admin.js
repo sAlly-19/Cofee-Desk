@@ -131,7 +131,11 @@ async function device(url) {
       inputServer.close();
     });
     await new Promise((resolve) => inputServer.listen(pipeName, resolve));
-    const env = { ...process.env, COFFEE_TEST_PIPE: pipeName };
+    const env = {
+      ...process.env,
+      COFFEE_TEST_PIPE: pipeName,
+      COFFEE_TEST_OUTPUT: db.root,
+    };
     delete env.ELECTRON_RUN_AS_NODE;
     env.COFFEE_TEST_LOCAL_SIGNALING = "1";
     const child = spawn(

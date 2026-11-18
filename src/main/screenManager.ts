@@ -10,6 +10,8 @@ import type { DesktopSource } from "../shared/types";
 import { assertTrusted } from "./ipcSecurity";
 import {
   nativeSession,
+  maySelectSource,
+  captureCallId,
   prepareNativeSource,
   selectedSource,
 } from "./sessionAuthority";
@@ -31,7 +33,10 @@ export async function getDesktopSources(): Promise<DesktopSource[]> {
 export async function selectDesktopSource(sender: number, sourceId: string) {
   if (typeof sourceId !== "string" || sourceId.length > 150)
     throw new Error("Fonte inválida");
+  const callId = captureCallId(sender);
   const source = (await getDesktopSources()).find((s) => s.id === sourceId);
+  if (!callId || captureCallId(sender) !== callId)
+    throw new Error("A solicitação de compartilhamento foi encerrada");
   if (!source) throw new Error("A tela ou janela não está mais disponível");
   const kind = source.id.startsWith("screen:") ? "screen" : "window";
   const display =
@@ -44,7 +49,12 @@ export async function selectDesktopSource(sender: number, sourceId: string) {
       ? screen.dipToScreenRect(null, display.bounds)
       : display.bounds
     : undefined;
-  prepareNativeSource(sender, { sourceId, sourceKind: kind, bounds });
+  prepareNativeSource(sender, {
+    sourceId,
+    sourceKind: kind,
+    bounds,
+    isPrimary: source.isPrimary,
+  });
   return { success: true, sourceId, kind };
 }
 export function registerScreenIpcHandlers(): void {
@@ -105,13 +115,29 @@ export function registerScreenIpcHandlers(): void {
   screen.on("display-removed", topology);
   screen.on("display-metrics-changed", topology);
 
-  session.defaultSession.setPermissionCheckHandler(
-    (_contents, permission) =>
-      permission === "display-capture" || permission === "media",
+  const mayCapture = (
+    owner: Electron.WebContents | null,
+    permission: string,
+  ) => {
+    if (!owner || permission !== "display-capture" || owner.isDestroyed())
+      return false;
+    try {
+      assertTrusted({
+        sender: owner,
+        senderFrame: owner.mainFrame,
+      } as Electron.IpcMainInvokeEvent);
+    } catch {
+      return false;
+    }
+    return (
+      nativeSession(owner.id)?.role === "host" && !!selectedSource(owner.id)
+    );
+  };
+  session.defaultSession.setPermissionCheckHandler((owner, permission) =>
+    mayCapture(owner, permission),
   );
   session.defaultSession.setPermissionRequestHandler(
-    (_contents, permission, callback) =>
-      callback(permission === "display-capture" || permission === "media"),
+    (owner, permission, callback) => callback(mayCapture(owner, permission)),
   );
   session.defaultSession.setDisplayMediaRequestHandler(
     async (request, callback) => {
@@ -123,6 +149,10 @@ export function registerScreenIpcHandlers(): void {
           .find((w) => w.mainFrame === request.frame);
         if (!owner || sender === undefined)
           throw new Error("Captura não autorizada");
+        assertTrusted({
+          sender: owner,
+          senderFrame: owner.mainFrame,
+        } as Electron.IpcMainInvokeEvent);
         const active = nativeSession(owner.id),
           selected = selectedSource(owner.id);
         if (!active || active.role !== "host" || !selected)
@@ -130,7 +160,12 @@ export function registerScreenIpcHandlers(): void {
         const source = (
           await desktopCapturer.getSources({ types: ["screen", "window"] })
         ).find((s) => s.id === selected.sourceId);
-        if (!source) throw new Error("Fonte encerrada");
+        if (
+          !source ||
+          nativeSession(owner.id)?.callId !== active.callId ||
+          selectedSource(owner.id)?.sourceId !== selected.sourceId
+        )
+          throw new Error("Fonte encerrada");
         callback({ video: source });
       } catch {
         callback(null);
@@ -139,12 +174,16 @@ export function registerScreenIpcHandlers(): void {
   );
   ipcMain.handle(IPC_CHANNELS.DESKTOP_SOURCES, async (event) => {
     assertTrusted(event);
+    if (!maySelectSource(event.sender.id))
+      throw Error("Seleção de tela não autorizada");
     return getDesktopSources();
   });
   ipcMain.handle(
     IPC_CHANNELS.DESKTOP_STREAM_START,
     async (event, id: string) => {
       assertTrusted(event);
+      if (!maySelectSource(event.sender.id))
+        throw Error("Seleção de tela não autorizada");
       return selectDesktopSource(event.sender.id, id);
     },
   );

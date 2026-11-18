@@ -2,7 +2,9 @@ const { app, BrowserWindow } = require("electron");
 const fs = require("fs");
 const path = require("path");
 const root = path.resolve(__dirname, ".."),
-  out = path.join(root, "artifacts/admin-browser");
+  out =
+    process.env.COFFEE_TEST_OUTPUT ||
+    path.join(root, "artifacts/admin-browser");
 fs.mkdirSync(out, { recursive: true });
 app.setPath("userData", path.join(out, "electron-profile"));
 const checks = [];
@@ -75,6 +77,7 @@ async function click(win, text) {
   );
 }
 async function capture(win, name) {
+  if (process.env.COFFEE_CAPTURE_TESTS !== "1") return;
   win.showInactive();
   await js(win, "document.fonts.ready.then(()=>true)");
   await sleep(250);
@@ -90,6 +93,7 @@ async function run() {
     registerDeviceSecurity,
   } = require("../dist-electron/main/deviceSecurity");
   registerDeviceSecurity();
+  require("../dist-electron/main/signalingTransport").registerSignalingTransport();
   require(
     path.join(root, "dist-electron/main/sessionAuthority"),
   ).registerSessionAuthority();
@@ -127,6 +131,7 @@ async function run() {
       backgroundThrottling: false,
     },
   });
+  require("../dist-electron/main/updater").registerUpdater(client);
   await client.loadFile(path.join(root, "dist-electron/renderer/index.html"));
   check(
     "Updated client authenticates against configured server",

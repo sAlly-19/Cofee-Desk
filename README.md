@@ -1,5 +1,7 @@
 # Coffee Desk 1.0.2
 
+Correções aprovadas da auditoria: consulte [andamento, evidências e pendências](docs/audit/REMEDIATION-STATUS.md). A auditoria original permanece como fotografia da base anterior.
+
 Implementação de sessões, histórico e atualização integrada: consulte [funcionamento, verificações e pendências](docs/RELIABILITY-AND-UPDATES.md). Código em validação; nenhum novo instalador/release foi gerado nesta etapa.
 
 Implantação na Render + Neon: consulte [o guia de implantação](docs/DEPLOY-RENDER-NEON.md). Não é necessário gerar instalador para publicar o servidor e o painel.

@@ -1,3 +1,4 @@
+import { verifiedNativeHelper } from "./nativeIntegrity";
 import { validRemoteKeyboard, validRemoteMouse } from "../shared/remoteInput";
 import { normalizedPoint } from "../shared/geometry";
 import { assertTrusted } from "./ipcSecurity";
@@ -6,7 +7,7 @@ import {
   nativeSession,
   onNativeSessionChange,
 } from "./sessionAuthority";
-import { ipcMain } from "electron";
+import { ipcMain, app, webContents } from "electron";
 import { spawn, ChildProcess } from "child_process";
 import path from "path";
 import fs from "fs";
@@ -20,6 +21,11 @@ const heldButtons = new Map<string, "virtual" | "shared">();
 const mouseModes = new Map<number, "virtual" | "shared">();
 let virtualMouseSupported = false;
 let isReady = false;
+function broadcastControl(code?: string) {
+  for (const owner of webContents?.getAllWebContents?.() ?? []) {
+    if (nativeSession(owner.id)?.role === "host") owner.send("remote:control-state", {enabled:enabledSenders.has(owner.id),ready:isReady,code});
+  }
+}
 
 // Mapeamento de KeyboardEvent.code para Windows Virtual-Key (VK)
 const CODE_TO_VK: Record<string, number> = {
@@ -93,6 +99,21 @@ function getVkCode(code: string, key?: string): number {
  * Localiza ou compila o helper nativo CoffeeInput.exe.
  */
 function findOrCompileNativeHelper(): string | null {
+  if (app.isPackaged) {
+    try {
+      return verifiedNativeHelper(
+        process.resourcesPath,
+        JSON.parse(
+          fs.readFileSync(
+            path.join(__dirname, "native-integrity.json"),
+            "utf8",
+          ),
+        ),
+      );
+    } catch {
+      return null;
+    }
+  }
   const possiblePaths = [
     path.join(process.resourcesPath, "native", "CoffeeInput-v2.exe"),
     path.join(__dirname, "native", "CoffeeInput-v2.exe"),
@@ -173,19 +194,27 @@ function startNativeInputProcess(): void {
   }
 
   try {
-    console.log(`[Input] Iniciando processo helper: ${exePath}`);
+    console.log("[Input] Iniciando helper nativo de controle");
     const child = spawn(exePath, [], {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
     });
 
     inputProcess = child;
+    const failed = () => {
+      enabledSenders.clear();
+      isReady = false;
+      broadcastControl("INPUT_UNAVAILABLE");
+    };
+    child.on("error", failed);
+    child.stdin?.on("error", failed);
 
     child.stdout?.on("data", (data) => {
       const msg = data.toString().trim();
       if (msg.includes("VIRTUAL_MOUSE_V1")) virtualMouseSupported = true;
       if (msg.includes("READY")) {
         isReady = true;
+        broadcastControl();
         console.log(
           "[Input] Helper nativo Win32 PRONTO para injeção de comandos.",
         );
@@ -200,7 +229,9 @@ function startNativeInputProcess(): void {
       console.warn(`[Input] Helper finalizado com código ${code}.`);
       isReady = false;
       inputProcess = null;
+      enabledSenders.clear();
       virtualMouseSupported = false;
+      broadcastControl("INPUT_UNAVAILABLE");
     });
   } catch (err) {
     console.error("[Input] Falha ao iniciar processo helper:", err);
@@ -217,6 +248,13 @@ function sendNativeCommand(cmd: string): void {
 
   if (inputProcess?.stdin && !inputProcess.stdin.destroyed) {
     try {
+      if (inputProcess.stdin.writableLength > 65536) {
+        enabledSenders.clear();
+        releaseHeldInput();
+        broadcastControl("INPUT_OVERLOAD");
+        console.warn("[Input] Controle pausado: fila nativa excedeu o limite");
+        return;
+      }
       inputProcess.stdin.write(cmd + "\n");
     } catch (err) {
       console.error("[Input] Erro ao escrever no stdin do helper:", err);
@@ -260,6 +298,7 @@ export function registerInputIpcHandlers(): void {
     if (!hasPermission(sender, "control")) {
       if (enabledSenders.has(sender)) releaseHeldInput();
       enabledSenders.delete(sender);
+      broadcastControl();
       if (!nativeSession(sender)) mouseModes.delete(sender);
     }
   });
@@ -373,10 +412,17 @@ export function registerInputIpcHandlers(): void {
         throw Error("Argumento inválido");
       const requested =
         enabled !== undefined ? enabled : !enabledSenders.has(event.sender.id);
-      if (requested && !hasPermission(event.sender.id, "control")) return false;
+      if (
+        requested &&
+        (!hasPermission(event.sender.id, "control") ||
+          !isReady ||
+          (inputProcess?.stdin?.writableLength ?? 0) > 65536)
+      )
+        return false;
       if (!requested) releaseHeldInput();
       if (requested) enabledSenders.add(event.sender.id);
       else enabledSenders.delete(event.sender.id);
+      broadcastControl();
       console.log(
         `[Input] Controle remoto do Host agora está: ${requested ? "ATIVO" : "PAUSADO"}`,
       );
