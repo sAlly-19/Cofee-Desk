@@ -21,7 +21,7 @@ jobs:
           $runnerSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
           icacls "$env:GITHUB_WORKSPACE" /grant "*${runnerSid}:(OI)(CI)F" /Q
           if ($LASTEXITCODE -ne 0) { throw "Unable to grant workspace access to runner user" }
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6, reviewed 2026-11-18
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6, reviewed 2026-11-18
         with:
           node-version: "22"
           cache: npm
